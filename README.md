@@ -263,7 +263,12 @@ Durante el ciclo de desarrollo del proyecto, se empleó una metodología de asis
    PORT=3000
    GEMINI_API_KEY="SU_CLAVE_API_DE_GEMINI"
    ```
-   *Nota: Si no dispone de clave de Gemini en el momento, el CRM utilizará automáticamente un pipeline secundario basado en la clave pública de OCR.space o un simulador inteligente basado en el nombre del archivo.*
+   > [!TIP]
+   > **Nota sobre la Evaluación del Escáner de Comprobantes (Modo Offline/Rescate)**:
+   > Si el docente o evaluador no configura una clave de API de Gemini, el backend ejecutará automáticamente un pipeline de rescate (*fallback*):
+   > 1. Intentará llamar a la API de **OCR.space** con clave pública.
+   > 2. Si no hay conexión a internet o la API falla, se activa el **Simulador Inteligente (Mock Fallback)** del backend. Para probarlo de forma inmediata, simplemente suba cualquier archivo de imagen renombrado con la estructura: `comprobante_[banco]_[nombre_cliente]_[monto].png` (ejemplo: `comprobante_pichincha_roberto_martinez_4600.png`). El sistema extraerá e ingresará de forma realista el nombre, banco y monto, e intentará asociarlo con un cliente registrado.
+
 5. Iniciar el servidor de desarrollo acoplado (Vite + Express API Middleware):
    ```bash
    npm run dev
