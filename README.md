@@ -1,7 +1,7 @@
 <div align="center">
   <img width="1200" height="400" alt="ECU-CRM Banner" src="https://images.unsplash.com/photo-1552581230-c01bc0d48403?auto=format&fit=crop&w=1200&h=400&q=80" style="border-radius: 12px; margin-bottom: 20px;" />
 
-  <h1>💼 Andean ECU-CRM</h1>
+  <h1>💼 ECU-CRM</h1>
   <p><strong>Sistema de Gestión de Clientes (CRM) Profesional para Consultorios y Freelancers</strong></p>
   
   <p>
@@ -17,21 +17,21 @@
 
 ## 📌 1. Objetivos del Proyecto
 
-El **Andean ECU-CRM** es una plataforma web integral diseñada para resolver los desafíos de gestión de información y tiempos de respuesta que enfrentan los consultorios profesionales (médicos, psicológicos, jurídicos) y trabajadores autónomos (freelancers) en el contexto ecuatoriano. 
+El **ECU-CRM** es una plataforma web integral diseñada para resolver los desafíos de gestión de información y tiempos de respuesta que enfrentan los consultorios profesionales (médicos, jurídicos) y trabajadores autónomos (freelancers) en el contexto ecuatoriano. 
 
 ### El Problema que Resuelve
-* **Dispersión y Pérdida de Datos**: Tradicionalmente, la información de clientes, historiales de consultas, cotizaciones e ingresos se maneja en formatos fragmentados (hojas de cálculo, libretas, correos). Este aplicativo centraliza la totalidad de los datos en un único panel accesible.
-* **Falta de Seguimiento Histórico**: Permite registrar de manera secuencial la interacción con el cliente a través de una línea de tiempo dinámica de notas de seguimiento, llamadas telefónicas y bitácoras de auditoría, evitando la pérdida de contexto entre reuniones o consultas.
-* **Tiempos de Respuesta Ineficientes**: Automatiza el registro de clientes y la facturación correspondiente a través de un escáner inteligente de comprobantes de transferencias bancarias de Ecuador (Banco Pichincha, Guayaquil, Pacífico, etc.), reduciendo el tiempo de digitación manual de minutos a segundos.
+* **Dispersión y Pérdida de Datos**: Tradicionalmente, la información de clientes, historiales de consultas, cotizaciones e ingresos se maneja en formatos fragmentados. Este aplicativo centraliza la totalidad de los datos en un único panel accesible.
+* **Falta de Seguimiento Histórico**: Permite registrar de manera secuencial la interacción con el cliente a través de una línea de tiempo dinámica de notas de seguimiento, llamadas telefónicas y bitácoras de auditoría, evitando la pérdida de contexto.
+* **Tiempos de Respuesta Ineficientes**: Automatiza el registro de clientes y la facturación correspondiente a través de un escáner inteligente de comprobantes de transferencias bancarias de Ecuador (Banco Pichincha, Guayaquil, etc.), reduciendo el tiempo de digitación manual.
 
 ### Alcance de la Aplicación
-1. **Módulo de Clientes**: Registro completo de información fiscal (RUC/Cédula, correo, teléfono, dirección comercial, ciudad de operación) con validación matemática en tiempo real.
+1. **Módulo de Clientes**: Registro completo de información fiscal (RUC/Cédula, correo, teléfono, dirección, ciudad) con validación matemática en tiempo real.
 2. **Ciclo de Estados del Servicio**: Flujo visual interactivo de los clientes a través de cuatro estados clave: *Contacto Inicial*, *En Desarrollo*, *Facturado/Cobrado* y *Finalizado*.
-3. **Línea de Tiempo del Cliente (Timeline)**: Registro cronológico de notas, llamadas telefónicas y bitácoras de cambio de estado.
-4. **Gestión de Proyectos**: Planificación de entregables, asignación de responsables, presupuestos y control del porcentaje de avance a través de tareas checklists individuales por cliente.
-5. **Módulo de Facturación y Emisión Electrónica SRI**: Generación de facturas con desglose automático de base imponible, tarifa del IVA del 15% (normativa vigente en Ecuador), y simulación de firma y autorización electrónica mediante el web service del SRI (generando la clave de acceso oficial de 49 dígitos).
-6. **Módulo Cotizador y Catálogo**: Creación rápida de presupuestos a partir de una base de productos/servicios parametrizados.
-7. **Control de Seguridad y Roles**: Gestión de usuarios administrativos y ejecutivos con validación de seguridad mediante PIN de autorización para acciones críticas como eliminación de registros.
+3. **Línea de Tiempo del Cliente (Timeline)**: Registro cronológico de notas de seguimiento, llamadas y bitácoras automáticas de cambios de estado.
+4. **Gestión de Proyectos**: Creación y edición de proyectos asociados a clientes con fechas, presupuesto, responsable asignado y control de avance mediante checklists de tareas interactivas.
+5. **Módulo de Facturación y Simulación del SRI**: Generación de facturas con desglose automático de base imponible e IVA del 15% (Ecuador), y simulación local del proceso de firma electrónica y obtención de clave de acceso de 49 dígitos del SRI (operación simulada localmente con fines educativos).
+6. **Módulo Cotizador y Catálogo**: Creación rápida de presupuestos a partir de una lista de productos y servicios parametrizables.
+7. **Control de Seguridad y Roles**: Gestión local de usuarios y roles con inicio de sesión y un PIN de seguridad ('1212') requerido en el backend para autorizar la eliminación de registros de clientes.
 
 ---
 
