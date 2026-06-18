@@ -1,4 +1,4 @@
-import { Client, ActivityLog, User, Project, Invoice } from './types';
+import { Client, ActivityLog, User, Invoice } from './types';
 
 export const INITIAL_CLIENTS: Client[] = [
   {
@@ -11,7 +11,7 @@ export const INITIAL_CLIENTS: Client[] = [
     city: 'Guayaquil',
     address: 'Av. 9 de Octubre y Boyacá, Guayaquil, Ecuador',
     serviceType: 'Asesoría Legal Corporate',
-    status: 'development',
+    status: 'en desarrollo',
     lastContact: 'Hoy, 10:45 AM',
     initials: 'RM',
     ruc: '0990001234001',
@@ -51,7 +51,7 @@ export const INITIAL_CLIENTS: Client[] = [
     city: 'Quito',
     address: 'Av. de los Shyris N34-24 y Portugal, Edificio Shyris Park, Quito',
     serviceType: 'Consultoría Fiscal',
-    status: 'initial',
+    status: 'nuevo lead',
     lastContact: 'Hoy, 10:30 AM',
     initials: 'AL',
     ruc: '1792483759001',
@@ -77,7 +77,7 @@ export const INITIAL_CLIENTS: Client[] = [
     city: 'Quito',
     address: 'Av. Eloy Alfaro N30-100 y Amazonas, Quito',
     serviceType: 'Auditoría IT',
-    status: 'development',
+    status: 'en desarrollo',
     lastContact: 'Ayer, 4:15 PM',
     initials: 'BE',
     ruc: '1790123456001',
@@ -103,7 +103,7 @@ export const INITIAL_CLIENTS: Client[] = [
     city: 'Guayaquil',
     address: 'Av. Juan Tanca Marengo Km 2.5, Guayaquil',
     serviceType: 'Gestión de Nómina',
-    status: 'billed', // Represents Cobrado/Facturado as green standard
+    status: 'cobrado', // Represents Cobrado/Facturado as green standard
     lastContact: 'Oct 12, 2023',
     initials: 'SM',
     ruc: '0990234561001',
@@ -129,7 +129,7 @@ export const INITIAL_CLIENTS: Client[] = [
     city: 'Quito',
     address: 'Av. de los Granados E12-10 y de las Azucenas, Quito',
     serviceType: 'Marketing Digital',
-    status: 'finished',
+    status: 'finalizado',
     lastContact: 'Oct 05, 2023',
     initials: 'TE',
     ruc: '1790876543001',
@@ -209,66 +209,6 @@ export const INITIAL_USERS: User[] = [
   }
 ];
 
-export const INITIAL_PROJECTS: Project[] = [
-  {
-    id: 'proj1',
-    clientId: 'roberto-martinez',
-    clientName: 'Corporación El Rosado S.A.',
-    name: 'Asesoría de Reestructuración Q4',
-    description: 'Revisión y actualización de los contratos laborales corporativos y el protocolo de fusiones de El Rosado.',
-    budget: 8500.00,
-    startDate: '2026-05-01',
-    endDate: '2026-06-15',
-    status: 'ongoing',
-    progress: 60,
-    tasks: [
-      { id: 't1', title: 'Reunión inicial de requerimientos', completed: true },
-      { id: 't2', title: 'Análisis de contratos actuales', completed: true },
-      { id: 't3', title: 'Borrador de nuevas cláusulas', completed: false },
-      { id: 't4', title: 'Aprobación del departamento legal del cliente', completed: false }
-    ],
-    assignedTo: 'Alejandro Valenzuela'
-  },
-  {
-    id: 'proj2',
-    clientId: 'banco-electrico',
-    clientName: 'Banco Eléctrico S.A.',
-    name: 'Auditoría IT de Seguridad',
-    description: 'Evaluación técnica integral del entorno en la nube y pruebas de penetración en los sistemas core transaccionales.',
-    budget: 15000.00,
-    startDate: '2026-05-10',
-    endDate: '2026-06-30',
-    status: 'ongoing',
-    progress: 40,
-    tasks: [
-      { id: 't5', title: 'Mapeo de arquitectura en nube', completed: true },
-      { id: 't6', title: 'Análisis de vulnerabilidades externas', completed: true },
-      { id: 't7', title: 'Pruebas internas e inyección', completed: false },
-      { id: 't8', title: 'Informe de remediación', completed: false }
-    ],
-    assignedTo: 'Carlos Andrade'
-  },
-  {
-    id: 'proj3',
-    clientId: 'tele-ecuador',
-    clientName: 'TeleEcuador Corp',
-    name: 'Campaña Digital Q2',
-    description: 'Desarrollo de estrategia SEO y pauta digital para el lanzamiento del nuevo plan de fibra del cliente.',
-    budget: 5000.00,
-    startDate: '2026-04-01',
-    endDate: '2026-05-15',
-    status: 'completed',
-    progress: 100,
-    tasks: [
-      { id: 't9', title: 'Plan de pauta aprobado', completed: true },
-      { id: 't10', title: 'Diseño de piezas gráficas', completed: true },
-      { id: 't11', title: 'Ejecución y optimización', completed: true },
-      { id: 't12', title: 'Entrega de informe final de KPIs', completed: true }
-    ],
-    assignedTo: 'Alejandro Valenzuela'
-  }
-];
-
 export const INITIAL_INVOICES: Invoice[] = [
   {
     id: 'fac1',
@@ -282,6 +222,9 @@ export const INITIAL_INVOICES: Invoice[] = [
       { description: 'Fase I: Planificación y Análisis de Riesgos Cloud', quantity: 1, unitPrice: 4000.00 }
     ],
     subtotal: 4000.00,
+    discount: 0,
+    retenciones: 0,
+    type: 'invoice',
     taxRate: 0.15,
     taxAmount: 600.00,
     total: 4600.00,
@@ -301,6 +244,9 @@ export const INITIAL_INVOICES: Invoice[] = [
       { description: 'Honorarios Mensuales de Nómina (Abril 2026)', quantity: 1, unitPrice: 1500.00 }
     ],
     subtotal: 1500.00,
+    discount: 0,
+    retenciones: 0,
+    type: 'invoice',
     taxRate: 0.15,
     taxAmount: 225.00,
     total: 1725.00,
@@ -320,6 +266,9 @@ export const INITIAL_INVOICES: Invoice[] = [
       { description: 'Anticipo 50% - Asesoría Reestructuración Laboral', quantity: 1, unitPrice: 4250.00 }
     ],
     subtotal: 4250.00,
+    discount: 0,
+    retenciones: 0,
+    type: 'invoice',
     taxRate: 0.15,
     taxAmount: 637.50,
     total: 4887.50,
@@ -327,3 +276,52 @@ export const INITIAL_INVOICES: Invoice[] = [
   }
 ];
 
+export const INITIAL_PRODUCTS: Product[] = [];
+
+export const INITIAL_PROJECTS: Project[] = [
+  {
+    id: 'proj-001',
+    name: 'Implementación ERP Odoo',
+    clientId: 'roberto-martinez',
+    department: 'Eléctrico',
+    status: 'En Progreso',
+    startDate: '2026-05-15',
+    budget: 15000,
+    progress: 45,
+    description: 'Migración del sistema heredado a Odoo v17.'
+  },
+  {
+    id: 'proj-002',
+    name: 'Remodelación Sucursal Norte',
+    clientId: 'sierra-motors',
+    department: 'Materiales',
+    status: 'En Planificación',
+    startDate: '2026-06-10',
+    budget: 45000,
+    progress: 10,
+    description: 'Provisión de materiales y acabados para la nueva sucursal de vehículos.'
+  },
+  {
+    id: 'proj-003',
+    name: 'Auditoría de Redes WiFi 6',
+    clientId: 'banco-electrico',
+    department: 'Eléctrico',
+    status: 'Completado',
+    startDate: '2026-01-10',
+    endDate: '2026-02-28',
+    budget: 8500,
+    progress: 100,
+    description: 'Actualización y auditoría de la red inalámbrica corporativa.'
+  },
+  {
+    id: 'proj-004',
+    name: 'Campaña Escolar Regreso a Clases',
+    clientId: 'tele-ecuador',
+    department: 'Herramientas',
+    status: 'En Progreso',
+    startDate: '2026-05-01',
+    budget: 5000,
+    progress: 60,
+    description: 'Provisión masiva de artículos de papelería y mochilas para promoción interna.'
+  }
+];

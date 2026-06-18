@@ -39,9 +39,21 @@ function writeDB(data: any) {
 // Auth: Login
 router.post('/auth/login', (req, res) => {
   const { email, password } = req.body;
-  const db = readDB();
   
-  const user = db.users.find((u: any) => u.email === email && u.password === password);
+  // Hardcoded Users for S.I.D. ERP/CRM
+  const hardcodedUsers = [
+    { id: 'admin', name: 'Super Admin', username: 'admin', email: 'erick@sirek.online', password: '123', role: 'Super Admin', departamento_enum: 'Todos', department: 'Todos' },
+    { id: 'herramientas', name: 'Admin Herramientas', username: 'herramientas', email: 'herramientas@sirek.online', password: '123', role: 'Administrador', departamento_enum: 'Herramientas', department: 'Herramientas' },
+    { id: 'materiales', name: 'Admin Materiales', username: 'materiales', email: 'materiales@sirek.online', password: '123', role: 'Administrador', departamento_enum: 'Materiales', department: 'Materiales' },
+    { id: 'electrico', name: 'Admin Eléctrico', username: 'electrico', email: 'electrico@sirek.online', password: '123', role: 'Administrador', departamento_enum: 'Electrico', department: 'Eléctrico' }
+  ];
+
+  let user = hardcodedUsers.find(u => (u.email === email || u.username === email) && u.password === password);
+
+  if (!user) {
+    const db = readDB();
+    user = db.users.find((u: any) => (u.email === email || u.username === email) && u.password === password);
+  }
   
   if (user) {
     // Return user without password
@@ -54,7 +66,7 @@ router.post('/auth/login', (req, res) => {
   } else {
     res.status(401).json({
       success: false,
-      message: 'Credenciales inválidas. Por favor verifique el correo y la contraseña.'
+      message: 'Credenciales inválidas. Por favor verifique el usuario/correo y la contraseña.'
     });
   }
 });
@@ -125,38 +137,7 @@ router.post('/activities', (req, res) => {
   res.status(201).json(newActivity);
 });
 
-// Projects API
-router.get('/projects', (req, res) => {
-  const db = readDB();
-  res.json(db.projects || []);
-});
-
-router.post('/projects', (req, res) => {
-  const newProject = req.body;
-  const db = readDB();
-  
-  if (!db.projects) db.projects = [];
-  db.projects.unshift(newProject);
-  writeDB(db);
-  
-  res.status(201).json(newProject);
-});
-
-router.put('/projects/:id', (req, res) => {
-  const { id } = req.params;
-  const updatedProject = req.body;
-  const db = readDB();
-  
-  if (!db.projects) db.projects = [];
-  const index = db.projects.findIndex((p: any) => p.id === id);
-  if (index !== -1) {
-    db.projects[index] = { ...db.projects[index], ...updatedProject };
-    writeDB(db);
-    res.json(db.projects[index]);
-  } else {
-    res.status(404).json({ message: 'Proyecto no encontrado' });
-  }
-});
+// Projects API removed as per new multi-department requirements
 
 // Invoices API
 router.get('/invoices', (req, res) => {
@@ -170,6 +151,19 @@ router.post('/invoices', (req, res) => {
   
   if (!db.invoices) db.invoices = [];
   db.invoices.unshift(newInvoice);
+
+  // Stock logic: only decrease if it's a real invoice
+  if (newInvoice.type === 'invoice') {
+    if (!db.products) db.products = [];
+    newInvoice.items.forEach((item: any) => {
+      // Find the product by SKU or name (since we might not pass product ID directly)
+      const product = db.products.find((p: any) => p.sku === item.sku || p.name === item.description);
+      if (product) {
+        product.stock = Math.max(0, (product.stock || 0) - item.quantity);
+      }
+    });
+  }
+
   writeDB(db);
   
   res.status(201).json(newInvoice);
@@ -319,8 +313,8 @@ router.post('/products', (req, res) => {
     newProduct.id = newProduct.sku.toLowerCase().replace(/[^a-z0-9-]/g, '');
   }
 
-  if (db.products.some((p: any) => p.id === newProduct.id || p.sku === newProduct.sku)) {
-    return res.status(400).json({ message: 'Ya existe un producto con este SKU.' });
+  if (db.products.some((p: any) => p.sku.toLowerCase() === newProduct.sku.toLowerCase())) {
+    return res.status(400).json({ message: 'Error de validación: El SKU ya está cogido. Debe ser único.' });
   }
 
   db.products.push(newProduct);
@@ -336,6 +330,14 @@ router.put('/products/:id', (req, res) => {
 
   const index = db.products.findIndex((p: any) => p.id === id);
   if (index !== -1) {
+    // Check unique SKU for update
+    if (updatedProduct.sku) {
+      const existingSku = db.products.some((p: any) => p.id !== id && p.sku.toLowerCase() === updatedProduct.sku.toLowerCase());
+      if (existingSku) {
+        return res.status(400).json({ message: 'Error de validación: El SKU ya está cogido por otro producto.' });
+      }
+    }
+
     db.products[index] = { ...db.products[index], ...updatedProduct };
     writeDB(db);
     res.json(db.products[index]);
@@ -388,7 +390,8 @@ router.get('/settings/fiscal', (req, res) => {
     ruc: '',
     telefono: '',
     direccion: '',
-    firmaElectronica: ''
+    firmaElectronica: '',
+    botSriUrl: ''
   });
 });
 
@@ -402,11 +405,101 @@ router.post('/settings/fiscal', (req, res) => {
     ruc: settings.ruc || '',
     telefono: settings.telefono || '',
     direccion: settings.direccion || '',
-    firmaElectronica: settings.firmaElectronica || ''
+    firmaElectronica: settings.firmaElectronica || '',
+    botSriUrl: settings.botSriUrl || ''
   };
 
   writeDB(db);
   res.json({ success: true, settings: db.fiscalSettings });
+});
+
+// SRI Bot API (n8n Proxy)
+router.get('/consulta-sri', async (req, res) => {
+  let { ruc } = req.query;
+  if (!ruc) {
+    return res.status(400).json({ success: false, error: 'RUC es requerido.' });
+  }
+
+  // Si es cédula (10 dígitos), añadir '001' para n8n
+  if (typeof ruc === 'string' && ruc.length === 10) {
+    ruc = `${ruc}001`;
+  }
+
+  const db = readDB();
+  const botUrl = db.fiscalSettings?.botSriUrl;
+
+  if (!botUrl) {
+    return res.status(400).json({ success: false, error: 'La URL del Bot SRI no está configurada en Ajustes.' });
+  }
+
+  try {
+    const response = await fetch(botUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ ruc })
+    });
+
+    if (!response.ok) {
+      throw new Error(`El Bot respondió con estado ${response.status}`);
+    }
+
+    const text = await response.text();
+    if (!text || text.trim().length === 0 || text.includes('No output data')) {
+      throw new Error('Sin datos del Bot');
+    }
+
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error('Formato de respuesta inválido del Bot');
+    }
+
+    if (Array.isArray(data)) {
+      data = data[0] || {};
+    }
+
+    let estadoFinal = data.estadoContribuyente || data.estado || data.estado_tributario || data.status || data.estado_contribuyente;
+    let direccionFinal = data.direccionCompleta || data.address || data.direccion || data.direccion_fiscal;
+    let tipoFinal = data.tipoContribuyente || data.clase || data.tipo || data.clase_contribuyente;
+
+    if (!estadoFinal && (data.razonSocial || data.nombre)) {
+      const keys = Object.keys(data);
+      const estadoKey = keys.find(k => k.toLowerCase().includes('estado') || k.toLowerCase().includes('status'));
+      if (estadoKey) estadoFinal = data[estadoKey];
+    }
+    
+    if (!direccionFinal) {
+      const dirKey = Object.keys(data).find(k => k.toLowerCase().includes('direccion') || k.toLowerCase().includes('address') || k.toLowerCase().includes('ubicacion'));
+      if (dirKey) direccionFinal = data[dirKey];
+    }
+
+    const finalData = {
+      ruc: data.ruc || ruc,
+      razonSocial: data.razonSocial || data.nombre || data.razon_social || 'No encontrado',
+      estado: estadoFinal || 'No encontrado',
+      tipo: tipoFinal || 'PERSONA NATURAL',
+      regimen: data.regimen || data.tipo_regimen || 'GENERAL',
+      address: direccionFinal || 'No encontrada',
+      isRetentionAgent: data.isRetentionAgent || data.agente_retencion || 0,
+      isSpecialTaxpayer: data.isSpecialTaxpayer || data.contribuyente_especial || 0,
+      isAccountingObliged: data.isAccountingObliged || data.obligado_contabilidad || 0,
+      success: true
+    };
+
+    if (finalData.razonSocial === 'No encontrado' && finalData.estado === 'No encontrado') {
+      throw new Error('El Bot no encontró información para este RUC');
+    }
+
+    return res.json(finalData);
+
+  } catch (error: any) {
+    console.error('[SRI Bot] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Database Reset API (Resets to clean blank database)

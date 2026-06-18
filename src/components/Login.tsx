@@ -2,11 +2,16 @@ import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ShieldAlert, Sparkles } from 'lucide-react';
 import { User } from '../types';
 
+import { MOCK_USERS } from '../mockUsers';
+import { useDepartment } from '../context/DepartmentContext';
+
 interface LoginProps {
   onLoginSuccess: (user: User, token: string) => void;
+  onBack?: () => void;
 }
 
-export default function Login({ onLoginSuccess }: LoginProps) {
+export default function Login({ onLoginSuccess, onBack }: LoginProps) {
+  const { setDepartmentContext } = useDepartment();
   // Login states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +38,30 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return;
     }
 
+    // 1. Mock Local check
+    const mockUser = MOCK_USERS.find(
+      u => (u.email === email.trim() || u.username === email.trim()) && u.password === password
+    );
+
+    if (mockUser) {
+      if (mockUser.role === 'Administrador' && mockUser.department) {
+        setDepartmentContext(mockUser.department);
+      } else if (mockUser.role === 'Super Admin') {
+        setDepartmentContext(null); 
+      }
+      
+      const mockToken = 'mock-jwt-token-' + mockUser.id;
+      if (rememberMe) {
+        localStorage.setItem('ecu_crm_user', JSON.stringify(mockUser));
+        localStorage.setItem('ecu_crm_token', mockToken);
+      } else {
+        sessionStorage.setItem('ecu_crm_user', JSON.stringify(mockUser));
+        sessionStorage.setItem('ecu_crm_token', mockToken);
+      }
+      onLoginSuccess(mockUser as User, mockToken);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -41,45 +70,35 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
-        if (rememberMe) {
-          localStorage.setItem('ecu_crm_user', JSON.stringify(data.user));
-          localStorage.setItem('ecu_crm_token', data.token);
-        } else {
-          sessionStorage.setItem('ecu_crm_user', JSON.stringify(data.user));
-          sessionStorage.setItem('ecu_crm_token', data.token);
-        }
+        localStorage.setItem('ecu_crm_user', JSON.stringify(data.user));
+        localStorage.setItem('ecu_crm_token', data.token);
         onLoginSuccess(data.user, data.token);
       } else {
         setErrorMessage(data.message || 'Error al iniciar sesión. Verifique sus credenciales.');
       }
     } catch (error) {
       console.error('Error logging in:', error);
-      // Fallback local check
+      // Legacy Fallback local check
       if (email === 'sirek' && password === 'Erick1212') {
-        const mockUser: User = {
+        const legacyUser: User = {
           id: 'carlos-andrade',
           name: 'Carlos Andrade',
           email: 'sirek',
-          role: 'Gerente Comercial',
+          role: 'Super Admin',
           avatarUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAnJV8Wsm0tliOIswMbx2sPkIv8KpHT4tUQOCdi_fZOyteQQFG3cWkuvW0eSugv0c9WIAc9NKrZHNaG_jDmDZfcFXE5Q9aL0hFPnqES0EDdID3wAfcLCFHb8NLAP5OlmeHUF76VlT9--TVYUJlov2dvW7OYA9rmQaBqhZqqn7-_Q2NXVl92qb8lrhy4QNwHKtOHHjBCDm8A6IaballwwYaAODjJgY9dGk27w_hI5JBnPah3d5Omm05RfIbiYQRXugNnC30pP0gDU8w'
         };
         const mockToken = 'mock-jwt-token-carlos-andrade';
-        if (rememberMe) {
-          localStorage.setItem('ecu_crm_user', JSON.stringify(mockUser));
-          localStorage.setItem('ecu_crm_token', mockToken);
-        } else {
-          sessionStorage.setItem('ecu_crm_user', JSON.stringify(mockUser));
-          sessionStorage.setItem('ecu_crm_token', mockToken);
-        }
-        onLoginSuccess(mockUser, mockToken);
+        localStorage.setItem('ecu_crm_user', JSON.stringify(legacyUser));
+        localStorage.setItem('ecu_crm_token', mockToken);
+        onLoginSuccess(legacyUser, mockToken);
       } else {
-        setErrorMessage('Error de conexión con el servidor. Por favor, intente de nuevo.');
+        setErrorMessage('Credenciales inválidas o error de conexión.');
       }
     } finally {
       setIsLoading(false);
@@ -151,10 +170,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         {/* Logo / Header Area */}
         <div className="text-center mb-8 flex flex-col items-center">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-3xl font-display shadow-lg shadow-blue-500/20 border border-blue-400/25 mb-4 animate-bounce-slow">
-            E
+            S
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight font-display">
-            ECU<span className="text-blue-500">-</span>CRM
+            SID<span className="text-blue-500">-</span>CRM
           </h1>
           <p className="text-sm text-slate-400 mt-2 flex items-center gap-1.5 justify-center">
             <Sparkles className="w-3.5 h-3.5 text-blue-400" />
@@ -191,7 +210,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       type="text"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="sirek o usuario@ecuacrm.com.ec"
+                      placeholder="sirek o usuario@sidcrm.com.ec"
                       className="w-full bg-slate-950/50 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm outline-none transition-all"
                       required
                     />
@@ -360,17 +379,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </>
           )}
 
-          {/* Quick Access Info for Testing */}
-          <div className="mt-8 pt-6 border-t border-slate-800/80 text-[11px] text-slate-500 text-center">
-            <span className="font-bold text-slate-400">Acceso Rápido Demo:</span><br />
-            sirek / Erick1212 (PIN de Borrado/Recuperación: 1212)
-          </div>
-
         </div>
 
         {/* Footer Credit */}
         <p className="text-center text-xs text-slate-600 mt-8">
-          ECU-CRM • Pichincha y Guayas, Ecuador<br />
+          SID-CRM • Pichincha y Guayas, Ecuador<br />
           Soporte Técnico Autorizado por SRI
         </p>
 

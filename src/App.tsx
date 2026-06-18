@@ -1,52 +1,370 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  LayoutDashboard,
-  Users,
-  FolderOpen,
-  TrendingUp,
-  Plus,
-  Search,
-  Bell,
-  HelpCircle,
-  CheckCircle2,
-  DollarSign,
-  History,
-  UserPlus,
+import { 
+  Menu,
+  Building2, 
+  Users, 
   Receipt,
   FileText,
-  MapPin,
-  Mail,
-  Phone,
-  Send,
-  Filter,
-  Download,
-  ChevronRight,
-  ChevronLeft,
-  Trash2,
   Settings,
   LogOut,
-  RotateCcw,
-  Info,
-  Calendar,
-  Check,
-  Map,
-  Sparkles,
-  Edit2,
-  Lock,
-  PlusCircle,
-  Briefcase,
+  Search,
+  Plus,
+  ArrowRight,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
   AlertCircle,
-  Upload,
+  Briefcase,
+  ChevronDown,
+  ChevronUp,
+  Phone,
+  Mail,
+  MapPin,
+  Calendar,
+  Filter,
+  DollarSign,
+  Download,
+  Share2,
+  Trash2,
+  Edit2,
+  Save,
+  X,
+  CreditCard,
+  Building,
+  Check,
   Package,
+  Activity,
+  Image as ImageIcon,
+  UserPlus,
+  Lock,
+  ChevronLeft,
+  Shield,
+  FolderOpen,
+  ArrowLeft,
+  LayoutDashboard,
+  Bell,
+  HelpCircle,
+  History,
+  Moon,
   Sun,
-  Moon
+  Sparkles,
+  ChevronRight,
+  Info,
+  Send,
+  PlusCircle,
+  Upload,
+  RotateCcw,
+  Percent,
+  ShieldCheck,
+  Pencil,
+  RefreshCw,
+  ShoppingCart
 } from 'lucide-react';
+import { useDepartment } from './context/DepartmentContext';
+import { FinancialReports } from './components/FinancialReports';
+import { HumanResources } from './components/HumanResources';
+import { QuotationsHistory } from './components/QuotationsHistory';
+import PurchasesAndExpenses from './components/PurchasesAndExpenses';
+import { AccountingCore } from './utils/AccountingCore';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 
-import { Client, ClientStatus, TimelineEvent, ActivityLog, User, Project, Invoice, InvoiceItem, Product, FiscalSettings } from './types';
-import { INITIAL_CLIENTS, INITIAL_ACTIVITIES } from './data';
+import { Client, ClientStatus, TimelineEvent, ActivityLog, User, Invoice, InvoiceItem, Product, FiscalSettings, Project, Provider } from './types';
+import { INITIAL_CLIENTS, INITIAL_ACTIVITIES, INITIAL_PRODUCTS, INITIAL_PROJECTS } from './data';
 import { validateId } from './utils/ecuadorVal';
 import Login from './components/Login';
+import PublicPortal from './components/PublicPortal';
+import ProductForm from './components/ProductForm';
 import { playClickSound, playSuccessSound, playErrorSound } from './utils/audio';
+
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
+import JSZip from 'jszip';
+export const generateQuoteHtmlString = (
+  quoteData: any,
+  logoUrl: string,
+  fiscalSettings: any
+) => {
+  const itemsHtml = (quoteData.items || []).map((item: any, idx: number) => `
+    <tr>
+      <td style="border: 1px solid #e2e8f0; padding: 10px; font-family: monospace; text-align: center; color: #64748b;">${idx + 1}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 10px; font-weight: 500;">${item.description || item.name}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: center;">${item.quantity}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: right; font-family: monospace;">$${parseFloat(item.unitPrice || item.price || 0).toFixed(2)}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: right; font-family: monospace; font-weight: bold; color: #1e3a8a;">$${(item.quantity * parseFloat(item.unitPrice || item.price || 0)).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const logoHtml = logoUrl ? `<img src="${logoUrl}" style="max-height: 60px; max-width: 150px; object-fit: contain; margin-bottom: 10px;" />` : `<div style="font-size: 28px; font-weight: 900; color: #2563eb; font-family: sans-serif; letter-spacing: -1px; margin-bottom: 5px;">S.I.D-CRM</div>`;
+  const emitterName = fiscalSettings?.nombreComercial || 'S.I.D-CRM';
+  const emitterSlogan = fiscalSettings?.slogan || 'Soporte Técnico SRI y Soluciones Empresariales';
+  const emitterRuc = fiscalSettings?.ruc ? `RUC: ${fiscalSettings.ruc}` : 'RUC: N/A';
+  const emitterPhone = fiscalSettings?.telefono ? `Telf: ${fiscalSettings.telefono}` : '';
+  const emitterDir = fiscalSettings?.direccion || 'Ecuador';
+
+  const quoteDate = quoteData.date || quoteData.fecha || quoteData.created_at ? new Date(quoteData.date || quoteData.fecha || quoteData.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+  const quoteValid = quoteData.validez ? quoteData.validez : new Date(new Date(quoteDate).getTime() + 15*24*60*60*1000).toISOString().split('T')[0];
+  
+  const computedSubtotal = (quoteData.items || []).reduce((acc: number, item: any) => acc + (item.quantity * parseFloat(item.unitPrice || item.price || 0)), 0);
+  const subtotal = parseFloat(quoteData.subtotal || computedSubtotal);
+  const taxAmount = parseFloat(quoteData.taxAmount || quoteData.valor_iva || 0) || (subtotal * 0.15);
+  const total = parseFloat(quoteData.total || quoteData.total_neto || 0) || (subtotal + taxAmount);
+
+  return `
+    <html>
+      <head>
+        <title>Cotización Comercial - S.I.D-CRM</title>
+        <style>
+          body { font-family: 'Inter', Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #334155; margin: 30px; background-color: #fff; }
+          .container { max-width: 800px; margin: 0 auto; }
+          .quote-header { display: flex; justify-content: space-between; border-bottom: 2px solid #3b82f6; padding-bottom: 15px; margin-bottom: 20px; }
+          .quote-title { font-size: 24px; font-weight: 800; color: #1e3a8a; margin: 0; text-transform: uppercase; }
+          .meta-info { text-align: right; font-size: 10px; color: #64748b; line-height: 1.6; }
+          .meta-info strong { color: #192a56; }
+          .client-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+          .client-card h3 { margin: 0 0 10px 0; color: #1e3a8a; font-size: 12px; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; }
+          .details-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          .details-table th { background-color: #3b82f6; color: white; padding: 10px; font-size: 10px; text-transform: uppercase; font-weight: bold; border: 1px solid #3b82f6; }
+          .totals-section { display: flex; justify-content: flex-end; margin-bottom: 30px; }
+          .totals-table { width: 250px; border-collapse: collapse; }
+          .totals-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+          .totals-table .bold { font-weight: bold; color: #0f172a; }
+          .totals-table .grand-total { background-color: #eff6ff; font-weight: bold; color: #1e3a8a; border-top: 2px solid #3b82f6; }
+          .footer-notes { border-top: 1px solid #cbd5e1; padding-top: 15px; margin-top: 30px; font-size: 9px; color: #94a3b8; text-align: center; line-height: 1.5; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="quote-header">
+            <div>
+              ${logoHtml}
+              <div style="font-size: 11px; font-weight: bold; color: #0f172a; margin-top: 5px;">${emitterName}</div>
+              <div style="font-size: 9px; color: #64748b; font-style: italic;">${emitterSlogan}</div>
+              <div style="font-size: 9px; color: #64748b; margin-top: 2px;">${emitterRuc} | ${emitterPhone}</div>
+              <div style="font-size: 9px; color: #64748b;">${emitterDir}</div>
+            </div>
+            <div class="meta-info">
+              <h1 class="quote-title">Cotización</h1>
+              <p style="margin: 5px 0 0 0;"><strong>Fecha Emisión:</strong> ${quoteDate}</p>
+              <p style="margin: 2px 0 0 0;"><strong>Validez Hasta:</strong> ${quoteValid}</p>
+              <p style="margin: 2px 0 0 0;"><strong>Departamento:</strong> ${quoteData.department || 'General'}</p>
+            </div>
+          </div>
+
+          <div class="client-card">
+            <h3>DATOS DEL CLIENTE</h3>
+            <table style="width: 100%; font-size: 11px;">
+              <tr>
+                <td style="padding: 3px 0; width: 50%;"><strong>Cliente:</strong> ${quoteData.clientName || quoteData.client_name || 'Consumidor Final'}</td>
+                <td style="padding: 3px 0; width: 50%;"><strong>RUC/CI:</strong> ${quoteData.clientRuc || '9999999999999'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0;"><strong>Teléfono:</strong> ${quoteData.clientPhone || 'N/A'}</td>
+                <td style="padding: 3px 0;"><strong>Email:</strong> ${quoteData.clientEmail || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0;" colspan="2"><strong>Dirección:</strong> ${quoteData.city || quoteData.clientDir || 'Ecuador'}</td>
+              </tr>
+            </table>
+          </div>
+
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th style="width: 5%; text-align: center;">#</th>
+                <th style="width: 50%; text-align: left;">Descripción del Producto/Servicio</th>
+                <th style="width: 10%; text-align: center;">Cant.</th>
+                <th style="width: 15%; text-align: right;">P. Unit.</th>
+                <th style="width: 20%; text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="totals-section">
+            <table class="totals-table">
+              <tr>
+                <td>Subtotal (15% IVA)</td>
+                <td style="text-align: right; font-family: monospace;">$${subtotal.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td>IVA 15%</td>
+                <td style="text-align: right; font-family: monospace;">$${taxAmount.toFixed(2)}</td>
+              </tr>
+              <tr class="grand-total">
+                <td class="bold">VALOR TOTAL</td>
+                <td style="text-align: right; font-family: monospace; font-weight: bold; font-size: 13px;">$${total.toFixed(2)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="font-size: 10px; background-color: #f8fafc; border-left: 3px solid #3b82f6; padding: 10px; border-radius: 4px; margin-top: 20px;">
+            <strong>Condiciones de Pago:</strong> ${quoteData.paymentTerms || 'Transferencia o Tarjeta de Crédito'}<br/>
+            <strong>Notas:</strong> ${quoteData.notes || 'Cotización sujeta a términos y condiciones estándar de servicios.'}
+          </div>
+
+          <div class="footer-notes">
+            Esta cotización tiene fines exclusivamente comerciales y está sujeta a la aprobación de ambas partes.<br/>
+            ${emitterName} • ${emitterSlogan}
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+export const generateInternalQuoteHtmlString = (
+  quoteData: any,
+  logoUrl: string,
+  fiscalSettings: any,
+  rawProducts: Product[],
+  providers: Provider[]
+) => {
+  const itemsHtml = (quoteData.items || []).map((item: any, idx: number) => {
+    // Find the cheapest product matching this item description
+    const desc = item.description || item.name;
+    const cheapestMatches = getCheapestProducts(rawProducts).filter(p => p.name === desc || p.sku === desc);
+    const matchedProd = cheapestMatches[0] || rawProducts.find(p => p.name === desc || p.sku === desc);
+    const provider = matchedProd && matchedProd.providerId ? providers.find(pr => pr.id === matchedProd.providerId) : null;
+    
+    const cost = matchedProd?.costPrice || 0;
+    const profit = parseFloat(item.unitPrice || item.price || 0) - cost;
+
+    return `
+      <tr>
+        <td style="border: 1px solid #e2e8f0; padding: 10px; font-family: monospace; text-align: center; color: #64748b;">${idx + 1}</td>
+        <td style="border: 1px solid #e2e8f0; padding: 10px;">
+          <div style="font-weight: bold; color: #1e3a8a;">${desc}</div>
+          <div style="font-size: 9px; color: #64748b; margin-top: 4px;">Proveedor: ${provider ? provider.nombre_empresa : 'Interno'}</div>
+          ${provider && provider.logo_url ? `<img src="${provider.logo_url}" style="height: 15px; object-fit: contain; margin-top: 2px;" />` : ''}
+        </td>
+        <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: center;">${item.quantity}</td>
+        <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: right; color: #f97316;">$${cost.toFixed(2)}</td>
+        <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: right;">$${parseFloat(item.unitPrice || item.price || 0).toFixed(2)}</td>
+        <td style="border: 1px solid #e2e8f0; padding: 10px; text-align: right; font-weight: bold; color: #10b981;">$${(profit * item.quantity).toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <html>
+      <head>
+        <title>Cotización Interna (Proveedores) - S.I.D-CRM</title>
+        <style>
+          body { font-family: 'Inter', Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #334155; margin: 30px; background-color: #fff; }
+          .container { max-width: 800px; margin: 0 auto; }
+          .header-banner { background-color: #1e293b; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+          .title { font-size: 16px; font-weight: bold; margin: 0; }
+          .details-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          .details-table th { background-color: #f1f5f9; color: #475569; padding: 10px; font-size: 10px; text-transform: uppercase; border: 1px solid #e2e8f0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header-banner">
+            <div>
+              <h1 class="title">REPORTE INTERNO DE ABASTECIMIENTO</h1>
+              <div style="font-size: 10px; margin-top: 5px; color: #cbd5e1;">Cliente: ${quoteData.clientName || 'Consumidor Final'}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 12px; font-weight: bold;">USO CONFIDENCIAL</div>
+              <div style="font-size: 10px; color: #cbd5e1;">Fecha: ${new Date().toISOString().split('T')[0]}</div>
+            </div>
+          </div>
+
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th style="width: 5%;">#</th>
+                <th style="width: 40%; text-align: left;">Ítem y Proveedor Sugerido</th>
+                <th style="width: 10%; text-align: center;">Cant.</th>
+                <th style="width: 15%; text-align: right;">Costo Base</th>
+                <th style="width: 15%; text-align: right;">Precio Venta</th>
+                <th style="width: 15%; text-align: right;">Margen Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div style="font-size: 9px; color: #94a3b8; text-align: center; margin-top: 30px;">
+            Este documento indica el proveedor más económico de la base de datos de proveedores.
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+export const downloadDualZipHelper = async (
+  quoteData: any,
+  logoUrl: string,
+  fiscalSettings: any,
+  rawProducts: Product[],
+  providers: Provider[]
+) => {
+  const zip = new JSZip();
+
+  // PDF 1: Cliente
+  const htmlClient = generateQuoteHtmlString(quoteData, logoUrl, fiscalSettings);
+  const elementClient = document.createElement('div');
+  elementClient.innerHTML = htmlClient;
+  const pdfClientBlob = await html2pdf().from(elementClient).set({
+    margin: 10,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).output('blob');
+  zip.file(`Cotizacion_Cliente_${quoteData.clientName.replace(/\s+/g, '_')}.pdf`, pdfClientBlob);
+
+  // PDF 2: Interno
+  const htmlInternal = generateInternalQuoteHtmlString(quoteData, logoUrl, fiscalSettings, rawProducts, providers);
+  const elementInternal = document.createElement('div');
+  elementInternal.innerHTML = htmlInternal;
+  const pdfInternalBlob = await html2pdf().from(elementInternal).set({
+    margin: 10,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).output('blob');
+  zip.file(`Abastecimiento_Interno_${quoteData.clientName.replace(/\s+/g, '_')}.pdf`, pdfInternalBlob);
+
+  // Download ZIP
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Cotizacion_${quoteData.clientName.replace(/\s+/g, '_')}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+export const downloadPdfHelper = (htmlStr: string, filename: string) => {
+  const element = document.createElement('div');
+  element.innerHTML = htmlStr;
+  html2pdf().from(element).set({
+    margin: 10,
+    filename: filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).save();
+};
+
+export const getCheapestProducts = (products: Product[]) => {
+  const grouped = new Map<string, Product>();
+  for (const p of products) {
+    const key = (p.sku || p.name).toLowerCase().trim();
+    if (!grouped.has(key) || (p.costPrice || 0) < (grouped.get(key)!.costPrice || 0)) {
+      grouped.set(key, p);
+    }
+  }
+  return Array.from(grouped.values());
+};
 
 export default function App() {
   // Auth State
@@ -58,12 +376,47 @@ export default function App() {
     return localStorage.getItem('ecu_crm_token') || sessionStorage.getItem('ecu_crm_token');
   });
 
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [globalToast, setGlobalToast] = useState<{message: string, id: number} | null>(null);
+
+  const showToast = (msg: string) => {
+    const id = Date.now();
+    setGlobalToast({ message: String(msg), id });
+    setTimeout(() => {
+      setGlobalToast((prev) => (prev?.id === id ? null : prev));
+    }, 3500);
+  };
+
+  useEffect(() => {
+    // Sobrescribir el alert nativo para fallbacks (librerías, etc)
+    const originalAlert = window.alert;
+    window.alert = (msg) => {
+      showToast(msg);
+    };
+    return () => {
+      window.alert = originalAlert;
+    };
+  }, []);
+
   // Navigation State
-  const [activeTab, setRawActiveTab] = useState<'dashboard' | 'clientes' | 'nuevo-cliente' | 'proyectos' | 'facturacion' | 'ajustes' | 'cotizador' | 'usuarios' | 'productos' | 'perfil'>('dashboard');
-  const setActiveTab = (tab: 'dashboard' | 'clientes' | 'nuevo-cliente' | 'proyectos' | 'facturacion' | 'ajustes' | 'cotizador' | 'usuarios' | 'productos' | 'perfil') => {
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [activeTab, setRawActiveTab] = useState<'dashboard' | 'clientes' | 'nuevo-cliente' | 'facturacion' | 'ajustes' | 'cotizador' | 'historial-cotizaciones' | 'usuarios' | 'productos' | 'perfil' | 'proyectos' | 'fiscal' | 'reportes' | 'rrhh_empleados' | 'rrhh_accesos' | 'rrhh_nomina' | 'compras_gastos'>('dashboard');
+  const [globalTaxes, setGlobalTaxes] = useState({ iva: 15, retencionFuente: 1.75, retencionIva: 30 });
+  const { activeDepartment, setDepartmentContext, clearDepartmentContext } = useDepartment();
+  
+  const setActiveTab = (tab: 'dashboard' | 'clientes' | 'nuevo-cliente' | 'facturacion' | 'ajustes' | 'cotizador' | 'historial-cotizaciones' | 'usuarios' | 'productos' | 'perfil' | 'proyectos' | 'fiscal' | 'reportes' | 'rrhh_empleados' | 'rrhh_accesos' | 'rrhh_nomina' | 'compras_gastos') => {
     setRawActiveTab(tab);
     playClickSound();
   };
+
+  useEffect(() => {
+    if (currentUser && currentUser.department && currentUser.role !== 'Super Admin') {
+      if (activeDepartment !== currentUser.department) {
+        setDepartmentContext(currentUser.department as any);
+      }
+    }
+  }, [currentUser, activeDepartment, setDepartmentContext]);
+
 
   // Theme Mode State
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -89,32 +442,42 @@ export default function App() {
   const [soundsEnabled, setSoundsEnabled] = useState<boolean>(() => {
     return localStorage.getItem('ecu_crm_interface_sounds') !== 'false';
   });
-  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
-    return localStorage.getItem('ecu_crm_company_logo');
-  });
+  
+  // Logo State (per department)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
-  // Sync corporate logo to browser favicon in real-time
   useEffect(() => {
-    let link = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null;
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.getElementsByTagName('head')[0].appendChild(link);
+    if (currentUser) {
+      const depLogo = localStorage.getItem(`sid_crm_logo_${currentUser.department}`);
+      setLogoUrl(depLogo);
+      if (depLogo) {
+        let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = depLogo;
+      }
     }
-    if (logoUrl) {
-      link.href = logoUrl;
-    } else {
-      link.href = '/vite.svg'; // Fallback to default
-    }
-  }, [logoUrl]);
+  }, [currentUser]);
 
   // Users and Roles State
-  const [users, setUsers] = useState<User[]>([]);
+  const [rawUsers, setUsers] = useState<User[]>([]);
+  const normalizeStr = (s: string) => (s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const users = activeDepartment 
+    ? rawUsers.filter(u => 
+        normalizeStr(u.department) === normalizeStr(activeDepartment) || 
+        u.id === currentUser?.id || 
+        (u.email && currentUser?.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+      ) 
+    : rawUsers;
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [userFormName, setUserFormName] = useState('');
   const [userFormEmail, setUserFormEmail] = useState('');
   const [userFormRole, setUserFormRole] = useState('Vendedor');
   const [userFormPassword, setUserFormPassword] = useState('');
+  const [userFormDepartment, setUserFormDepartment] = useState('Herramientas');
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Security PIN Delete Modal
@@ -130,14 +493,28 @@ export default function App() {
   const [quotePaymentTerms, setQuotePaymentTerms] = useState('50% anticipo, 50% contra entrega');
   const [quoteNotes, setQuoteNotes] = useState('Cotización sujeta a términos y condiciones estándar de servicios.');
   const [quoteItems, setQuoteItems] = useState<InvoiceItem[]>([{ description: '', quantity: 1, unitPrice: 0 }]);
+  const [quoteRetFuente, setQuoteRetFuente] = useState(1.75);
+  const [quoteRetIva, setQuoteRetIva] = useState(30);
+  const [showQuoteRetentions, setShowQuoteRetentions] = useState(false);
+
+  // Sync initial retentions when globalTaxes loads
+  useEffect(() => {
+    setQuoteRetFuente(globalTaxes.retencionFuente);
+    setQuoteRetIva(globalTaxes.retencionIva);
+  }, [globalTaxes]);
 
   // Products Inventory States
-  const [products, setProducts] = useState<Product[]>([]);
+  const [rawProducts, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const products = activeDepartment ? rawProducts.filter(p => p.department === activeDepartment) : rawProducts;
+  const [activeCatalogTab, setActiveCatalogTab] = useState<'maestro' | 'publico'>('maestro');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productFormName, setProductFormName] = useState('');
   const [productFormSku, setProductFormSku] = useState('');
   const [productFormDescription, setProductFormDescription] = useState('');
   const [productFormPrice, setProductFormPrice] = useState<string>('');
+  
+  // ALERTS STATE
+  const [inventoryAlerts, setInventoryAlerts] = useState({ lowStock: [], expiringLots: [] });
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Fiscal Settings States
@@ -155,29 +532,61 @@ export default function App() {
   const [fiscalFormTelefono, setFiscalFormTelefono] = useState('');
   const [fiscalFormDireccion, setFiscalFormDireccion] = useState('');
   const [fiscalFormFirma, setFiscalFormFirma] = useState('');
+  const [fiscalFormBotSriUrl, setFiscalFormBotSriUrl] = useState('');
 
   // Profile Settings States
   const [profileFormName, setProfileFormName] = useState('');
   const [profileFormEmail, setProfileFormEmail] = useState('');
+  const [profileFormUsername, setProfileFormUsername] = useState('');
   const [profileFormPhone, setProfileFormPhone] = useState('');
   const [profileFormPassword, setProfileFormPassword] = useState('');
   const [profileFormAvatar, setProfileFormAvatar] = useState('');
   
   // Clients State
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const [rawClients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
   const [selectedClientId, setSelectedClientId] = useState<string>('roberto-martinez');
+  const [activeClientTab, setActiveClientTab] = useState<'clientes' | 'proveedores'>('clientes');
+
+  // Providers State
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [provForm, setProvForm] = useState({ ruc: '', nombre_empresa: '', condiciones_pago: '', telefono: '', email: '', logo_url: '' });
+
+  const handleSaveProvider = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...provForm, department: activeDepartment || currentUser?.department || 'Todos' })
+      });
+      if (res.ok) {
+        playSuccessSound();
+        setShowProviderModal(false);
+        setProvForm({ ruc: '', nombre_empresa: '', condiciones_pago: '', telefono: '', email: '', logo_url: '' });
+        fetchProviders();
+      }
+    } catch(err) { console.error(err); }
+  };
+
+  const clients = activeDepartment ? rawClients.filter(c => c.department === activeDepartment) : rawClients;
 
   // Activities Log State
   const [activities, setActivities] = useState<ActivityLog[]>(INITIAL_ACTIVITIES);
 
   // Projects State
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [rawProjects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  
+  const projects = activeDepartment ? rawProjects.filter(p => p.department === activeDepartment) : rawProjects;
 
   // Invoices State
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [rawInvoices, setInvoices] = useState<Invoice[]>([]);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedInvoiceForView, setSelectedInvoiceForView] = useState<Invoice | null>(null);
+
+  const invoices = activeDepartment ? rawInvoices.filter(i => i.department === activeDepartment) : rawInvoices;
 
   // Client Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -206,6 +615,53 @@ export default function App() {
   const [formCity, setFormCity] = useState('Quito');
   const [formValidationErrors, setFormValidationErrors] = useState<string[]>([]);
   const [formSuccessMessage, setFormSuccessMessage] = useState(false);
+
+  const [isConfigUnlocked, setIsConfigUnlocked] = useState(false);
+  const [configPinInput, setConfigPinInput] = useState('');
+
+  const [isConsultingSri, setIsConsultingSri] = useState(false);
+
+  const handleConsultaSri = async (ruc: string) => {
+    if (!ruc) return;
+    setIsConsultingSri(true);
+    try {
+      const res = await fetch(`/api/consulta-sri?ruc=${ruc}`);
+      const data = await res.json();
+      if (data.success) {
+        let nombre = data.razonSocial || '';
+        let apellido = '-';
+        
+        // Split for natural persons (Ecuador format: APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2)
+        // Natural persons have RUC starting with 10 digits and 3rd digit < 6
+        const isNatural = (ruc.length >= 3 && parseInt(ruc[2]) < 6) || (data.tipo && data.tipo.toUpperCase().includes('NATURAL'));
+        
+        if (isNatural) {
+          const parts = nombre.trim().split(/\s+/);
+          if (parts.length >= 4) {
+            apellido = `${parts[0]} ${parts[1]}`;
+            nombre = parts.slice(2).join(' ');
+          } else if (parts.length === 3) {
+            apellido = `${parts[0]} ${parts[1]}`;
+            nombre = `${parts[2]}`;
+          } else if (parts.length === 2) {
+            apellido = parts[0];
+            nombre = parts[1];
+          }
+        }
+        
+        setFormNames(nombre);
+        setFormSurname(apellido);
+        setFormAddress(data.address !== 'No encontrada' ? data.address : '');
+        playSuccessSound();
+      } else {
+        window.alert(data.error || 'Error al consultar al SRI');
+      }
+    } catch (e) {
+      window.alert('Error de conexión al consultar SRI');
+    } finally {
+      setIsConsultingSri(false);
+    }
+  };
 
   // Edit Client Modal States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -281,11 +737,11 @@ export default function App() {
       setOcrMatchClient(null);
       return;
     }
-    const cleanRuc = ocrFormRuc.replace(/\D/g, '');
+    const cleanRuc = ocrFormRuc.replace(/D/g, '');
     const cleanName = ocrFormClientName.trim().toLowerCase();
     
     const matched = clients.find(c => {
-      if (cleanRuc && c.ruc.replace(/\D/g, '') === cleanRuc) {
+      if (cleanRuc && c.ruc.replace(/D/g, '') === cleanRuc) {
         return true;
       }
       if (cleanName.length > 2 && (
@@ -400,7 +856,7 @@ export default function App() {
       }
     }
 
-    const clientId = ocrFormClientName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const clientId = ocrFormClientName.toLowerCase().replace(/s+/g, '-').replace(/[^a-z0-9-]/g, '');
     const initials = ocrFormClientName.split(' ').map(n => n[0] || '').join('').substring(0, 2).toUpperCase() || 'NC';
 
     const newClient: Client = {
@@ -413,7 +869,7 @@ export default function App() {
       city: 'Quito',
       address: 'Dirección extraída de comprobante bancario',
       serviceType: 'Consultoría Fiscal',
-      status: 'initial',
+      status: 'nuevo lead',
       lastContact: 'Hoy, Justo ahora',
       initials,
       ruc: ocrFormRuc || '1729483758001',
@@ -469,7 +925,7 @@ export default function App() {
         }
       }
 
-      const clientId = ocrFormClientName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const clientId = ocrFormClientName.toLowerCase().replace(/s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const initials = ocrFormClientName.split(' ').map(n => n[0] || '').join('').substring(0, 2).toUpperCase() || 'NC';
       const newClient: Client = {
         id: clientId,
@@ -481,7 +937,7 @@ export default function App() {
         city: 'Quito',
         address: 'Dirección extraída de comprobante bancario',
         serviceType: 'Consultoría Fiscal',
-        status: 'initial',
+        status: 'nuevo lead',
         lastContact: 'Hoy, Justo ahora',
         initials,
         ruc: ocrFormRuc || '1729483758001',
@@ -515,10 +971,13 @@ export default function App() {
       }
     }
 
-    const subtotal = ocrFormAmount / 1.15; // Back-calculate subtotal
-    const taxRate = 0.15;
+    const taxRate = globalTaxes.iva / 100;
+    const subtotal = ocrFormAmount / (1 + taxRate); // Back-calculate subtotal
     const taxAmount = ocrFormAmount - subtotal;
-    const total = ocrFormAmount;
+    const retencionFuenteVal = subtotal * (globalTaxes.retencionFuente / 100);
+    const retencionIvaVal = taxAmount * (globalTaxes.retencionIva / 100);
+    const retenciones = retencionFuenteVal + retencionIvaVal;
+    const total = subtotal + taxAmount - retenciones;
 
     const clientName = matchedClient ? matchedClient.company : ocrFormClientName;
     const clientRuc = matchedClient ? matchedClient.ruc : ocrFormRuc || '1729483758001';
@@ -538,6 +997,9 @@ export default function App() {
         { description: ocrFormDetail || 'Servicios profesionales / comprobante bancario', quantity: 1, unitPrice: subtotal }
       ],
       subtotal,
+      discount: 0,
+      retenciones,
+      type: 'invoice',
       taxRate,
       taxAmount,
       total,
@@ -588,14 +1050,17 @@ export default function App() {
 
   // Load database from API when authenticated
   useEffect(() => {
+    fetchProducts();
+    fetchFiscalSettings();
+    
     if (currentUser && token) {
       fetchClients();
+      fetchProviders();
       fetchActivities();
       fetchProjects();
       fetchInvoices();
       fetchUsers();
-      fetchProducts();
-      fetchFiscalSettings();
+      fetchInventoryAlerts();
     }
   }, [currentUser, token]);
 
@@ -604,6 +1069,7 @@ export default function App() {
     if (currentUser) {
       setProfileFormName(currentUser.name || '');
       setProfileFormEmail(currentUser.email || '');
+      setProfileFormUsername(currentUser.username || '');
       setProfileFormPhone(currentUser.phone || '');
       setProfileFormPassword('');
       setProfileFormAvatar(currentUser.avatarUrl || '');
@@ -634,9 +1100,25 @@ export default function App() {
         setFiscalFormTelefono(data.telefono || '');
         setFiscalFormDireccion(data.direccion || '');
         setFiscalFormFirma(data.firmaElectronica || '');
+        setFiscalFormBotSriUrl(data.botSriUrl || '');
       }
     } catch (e) {
       console.warn("Using offline fiscal settings", e);
+    }
+  };
+
+  const fetchInventoryAlerts = async () => {
+    try {
+      const res = await fetch('/api/alerts/inventory');
+      if (res.ok) {
+        const data = await res.json();
+        setInventoryAlerts({
+          lowStock: data?.lowStock || [],
+          expiringLots: data?.expiringLots || []
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to fetch inventory alerts", e);
     }
   };
 
@@ -648,7 +1130,8 @@ export default function App() {
       ruc: fiscalFormRuc,
       telefono: fiscalFormTelefono,
       direccion: fiscalFormDireccion,
-      firmaElectronica: fiscalFormFirma
+      firmaElectronica: fiscalFormFirma,
+      botSriUrl: fiscalFormBotSriUrl
     };
 
     try {
@@ -665,15 +1148,15 @@ export default function App() {
           setFiscalSettings(updated);
         }
         playSuccessSound();
-        alert("¡Datos fiscales del emisor actualizados con éxito!");
+        showToast("¡Datos fiscales del emisor actualizados con éxito!");
       } else {
-        alert("Error al actualizar los datos fiscales.");
+        showToast("Error al actualizar los datos fiscales.");
       }
     } catch (err) {
       console.error(err);
       setFiscalSettings(updated);
       playSuccessSound();
-      alert("¡Datos fiscales actualizados localmente!");
+      showToast("¡Datos fiscales actualizados localmente!");
     }
   };
 
@@ -760,6 +1243,7 @@ export default function App() {
 
     const updatedData: Partial<User> = {
       name: profileFormName,
+      username: profileFormUsername,
       email: profileFormEmail,
       phone: profileFormPhone,
       avatarUrl: profileFormAvatar
@@ -794,7 +1278,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateProjectStatus = async (projectId: string, newStatus: Project['status']) => {
+  const handleUpdateProjectStatus = async (projectId: string, newStatus: any) => {
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
     const updatedProject = { ...project, status: newStatus };
@@ -824,6 +1308,18 @@ export default function App() {
       }
     } catch (e) {
       console.warn("Using offline users cache", e);
+    }
+  };
+
+  const fetchProviders = async () => {
+    try {
+      const res = await fetch('/api/providers');
+      if (res.ok) {
+        const data = await res.json();
+        setProviders(data);
+      }
+    } catch (e) {
+      console.warn("Using offline providers cache", e);
     }
   };
 
@@ -973,6 +1469,7 @@ export default function App() {
         const res = await fetch('/api/reset', { method: 'POST' });
         if (res.ok) {
           await fetchClients();
+          await fetchProviders();
           await fetchActivities();
           await fetchProjects();
           await fetchInvoices();
@@ -993,8 +1490,8 @@ export default function App() {
     let finishedCount = 0;
     
     clients.forEach(c => {
-      if (c.status === 'initial') initialCount++;
-      else if (c.status === 'development') devCount++;
+      if (c.status === 'nuevo lead') initialCount++;
+      else if (c.status === 'en desarrollo') devCount++;
       else finishedCount++;
     });
 
@@ -1040,28 +1537,28 @@ export default function App() {
   // Status Colors helper
   const getStatusInfo = (status: ClientStatus) => {
     switch (status) {
-      case 'initial':
+      case 'nuevo lead':
         return {
           label: 'CONTACTO INICIAL',
           badgeClass: 'bg-orange-500/10 text-orange-500',
           borderClass: 'border-l-4 border-l-orange-500',
           indicatorColor: 'bg-orange-500'
         };
-      case 'development':
+      case 'en desarrollo':
         return {
           label: 'EN DESARROLLO',
           badgeClass: 'bg-blue-600/10 text-blue-600',
           borderClass: 'border-l-4 border-l-blue-600',
           indicatorColor: 'bg-blue-600'
         };
-      case 'billed':
+      case 'cobrado':
         return {
           label: 'FACTURADO',
           badgeClass: 'bg-emerald-600/10 text-emerald-600',
           borderClass: 'border-l-4 border-l-emerald-600',
           indicatorColor: 'bg-emerald-600'
         };
-      case 'finished':
+      case 'finalizado':
         return {
           label: 'FINALIZADO',
           badgeClass: 'bg-slate-600/10 text-slate-600',
@@ -1085,7 +1582,7 @@ export default function App() {
       type: newNoteType
     };
 
-    const updatedTimeline = [newEvent, ...currentClientDetail.timeline];
+    const updatedTimeline = [newEvent, ...(currentClientDetail.timeline || [])];
     const updatedClient = {
       ...currentClientDetail,
       lastContact: 'Hoy, ' + new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
@@ -1149,7 +1646,7 @@ export default function App() {
       type: 'status'
     };
 
-    const updatedTimeline = [statusEvent, ...currentClientDetail.timeline];
+    const updatedTimeline = [statusEvent, ...(currentClientDetail.timeline || [])];
     const updatedClient = {
       ...currentClientDetail,
       status: statusValue,
@@ -1180,7 +1677,7 @@ export default function App() {
       author: currentUser?.name || 'Carlos Andrade',
       type: 'proposal',
       statusLabel: newStatusInfo.label,
-      statusType: statusValue === 'initial' ? 'orange' : statusValue === 'development' ? 'blue' : 'green'
+      statusType: statusValue === 'nuevo lead' ? 'orange' : statusValue === 'en desarrollo' ? 'blue' : 'green'
     };
 
     try {
@@ -1224,7 +1721,7 @@ export default function App() {
       return;
     }
 
-    const clientId = (formNames + '-' + formSurname).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const clientId = (formNames + '-' + formSurname).toLowerCase().replace(/s+/g, '-').replace(/[^a-z0-9-]/g, '');
     const initials = (formNames[0] || '') + (formSurname[0] || '');
 
     const newClient: Client = {
@@ -1237,16 +1734,17 @@ export default function App() {
       city: formCity,
       address: formAddress || 'No especificada',
       serviceType: formServiceType,
-      status: 'initial',
+      status: 'nuevo lead',
       lastContact: 'Hoy, Justo ahora',
-      initials: initials.toUpperCase() || 'NC',
+      initials: `${formNames.charAt(0)}${formSurname.charAt(0)}`,
       ruc: formIdNumber,
+      department: activeDepartment || undefined,
       notes: formNotes || 'Sin comentarios iniciales',
       timeline: [
         {
           id: 'event-initial',
           title: 'Registro de Prospecto',
-          content: `Registrado con éxito como prospecto en ECU-CRM. Notas iniciales: ${formNotes || 'Ninguna'}`,
+          content: `Registrado con éxito como prospecto en S.I.D-CRM. Notas iniciales: ${formNotes || 'Ninguna'}`,
           date: 'Hoy, Justo ahora',
           addedBy: currentUser?.name || 'Carlos Andrade',
           type: 'status'
@@ -1386,11 +1884,11 @@ export default function App() {
   // CSV Exporter
   const handleExportCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "ID,Nombres,Compania,Email,Telefono,Ciudad,RUC,Servicio,Estado\n";
+    csvContent += "ID,Nombres,Compania,Email,Telefono,Ciudad,RUC,Servicio,Estadon";
     
     clients.forEach(c => {
       const row = `"${c.id}","${c.name}","${c.company}","${c.email}","${c.phone}","${c.city}","${c.ruc}","${c.serviceType}","${c.status}"`;
-      csvContent += row + "\n";
+      csvContent += row + "n";
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -1405,10 +1903,10 @@ export default function App() {
   // Quick helper to get status friendly title
   const getFriendlyStatus = (status: ClientStatus) => {
     switch (status) {
-      case 'initial': return 'Contacto Inicial';
-      case 'development': return 'En Desarrollo';
-      case 'billed': return 'Facturado';
-      case 'finished': return 'Finalizado';
+      case 'nuevo lead': return 'Nuevo Lead';
+      case 'en desarrollo': return 'En Desarrollo';
+      case 'cobrado': return 'Facturado';
+      case 'finalizado': return 'Finalizado';
     }
   };
 
@@ -1450,7 +1948,7 @@ export default function App() {
     const client = clients.find(c => c.id === projClientId);
     if (!client) return;
 
-    const newProject: Project = {
+    const newProject: any = {
       id: 'proj-' + Date.now(),
       clientId: projClientId,
       clientName: client.company,
@@ -1548,9 +2046,12 @@ export default function App() {
 
     // Calculate subtotal
     const subtotal = invItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-    const taxRate = 0.15; // 15% IVA Ecuador
+    const taxRate = globalTaxes.iva / 100; // From globalTaxes
     const taxAmount = subtotal * taxRate;
-    const total = subtotal + taxAmount;
+    const retencionFuenteVal = subtotal * (globalTaxes.retencionFuente / 100);
+    const retencionIvaVal = taxAmount * (globalTaxes.retencionIva / 100);
+    const retenciones = retencionFuenteVal + retencionIvaVal;
+    const total = subtotal + taxAmount - retenciones;
 
     // Sequential number helper
     const nextSequential = String(invoices.length + 8921).padStart(9, '0');
@@ -1565,6 +2066,9 @@ export default function App() {
       dueDate: invDueDate || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
       items: invItems,
       subtotal,
+      discount: 0,
+      retenciones,
+      type: 'invoice',
       taxRate,
       taxAmount,
       total,
@@ -1645,7 +2149,7 @@ export default function App() {
   };
 
   // Print and Export Quote to PDF
-  const handlePrintQuote = () => {
+  const handlePrintQuote = async () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert("Por favor habilite las ventanas emergentes (popups) para poder imprimir la cotización.");
@@ -1657,6 +2161,22 @@ export default function App() {
     const iva = subtotal * 0.15;
     const total = subtotal * 1.15;
 
+    try {
+      await fetch('/api/cotizaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: client?.id,
+          clientName: client?.name || 'Consumidor Final',
+          department: activeDepartment || 'General',
+          total: total,
+          items: quoteItems
+        })
+      });
+    } catch (e) {
+      console.error("No se pudo registrar la cotización en el historial.");
+    }
+
     const itemsHtml = quoteItems.map((item, idx) => `
       <tr>
         <td style="border: 1px solid #e2e8f0; padding: 10px; font-family: monospace; text-align: center; color: #64748b;">${idx + 1}</td>
@@ -1667,9 +2187,9 @@ export default function App() {
       </tr>
     `).join('');
 
-    const logoHtml = logoUrl ? `<img src="${logoUrl}" style="max-height: 60px; max-width: 150px; object-fit: contain; margin-bottom: 10px;" />` : `<div style="font-size: 28px; font-weight: 900; color: #2563eb; font-family: sans-serif; letter-spacing: -1px; margin-bottom: 5px;">ECU-CRM</div>`;
+    const logoHtml = logoUrl ? `<img src="${logoUrl}" style="max-height: 60px; max-width: 150px; object-fit: contain; margin-bottom: 10px;" />` : `<div style="font-size: 28px; font-weight: 900; color: #2563eb; font-family: sans-serif; letter-spacing: -1px; margin-bottom: 5px;">S.I.D-CRM</div>`;
 
-    const emitterName = fiscalSettings.nombreComercial || 'ECU-CRM';
+    const emitterName = fiscalSettings.nombreComercial || 'S.I.D-CRM';
     const emitterSlogan = fiscalSettings.slogan || 'Soporte Técnico SRI y Soluciones Empresariales';
     const emitterRuc = fiscalSettings.ruc ? `RUC: ${fiscalSettings.ruc}` : 'RUC: N/A';
     const emitterPhone = fiscalSettings.telefono ? `Telf: ${fiscalSettings.telefono}` : '';
@@ -1678,7 +2198,7 @@ export default function App() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Cotización Comercial - ECU-CRM</title>
+          <title>Cotización Comercial - S.I.D-CRM</title>
           <style>
             body { font-family: 'Inter', Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #334155; margin: 30px; background-color: #fff; }
             .container { max-width: 800px; margin: 0 auto; }
@@ -1898,8 +2418,8 @@ export default function App() {
             <table class="header-table" style="margin-left: -12px; width: calc(100% + 24px);">
               <tr>
                 <td class="header-cell">
-                  <div class="logo-title">ECU-CRM S.A.</div>
-                  <p class="bold">ECU-CRM SISTEMAS TRIBUTARIOS S.A.</p>
+                  <div class="logo-title">S.I.D-CRM S.A.</div>
+                  <p class="bold">S.I.D-CRM SISTEMAS TRIBUTARIOS S.A.</p>
                   <p><span class="bold">Dirección Matriz:</span> Av. de los Shyris N34-24 y Portugal, Edificio Shyris Park, Quito, Ecuador</p>
                   <p><span class="bold">Dirección Sucursal:</span> Sucursal Matriz, Quito, Pichincha</p>
                   <p><span class="bold">Contribuyente Especial Nro:</span> 0000</p>
@@ -2008,31 +2528,81 @@ export default function App() {
   };
 
   if (!currentUser || !token) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    if (showAdminLogin) {
+      return <Login onLoginSuccess={handleLoginSuccess} onBack={() => setShowAdminLogin(false)} />;
+    }
+    return (
+      <PublicPortal 
+        products={getCheapestProducts(rawProducts)}
+        onShowLogin={() => setShowAdminLogin(true)}
+        onSubmitQuote={async (quoteData) => {
+          const res = await fetch('/api/cotizaciones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: 'public-portal',
+              clientName: quoteData.clientName,
+              department: quoteData.department,
+              total: quoteData.total,
+              items: quoteData.items
+            })
+          });
+          if (!res.ok) throw new Error('Error saving quote');
+
+          downloadDualZipHelper(quoteData, logoUrl, fiscalSettings, rawProducts, providers);
+          alert('Cotización enviada y descargando PDF...');
+        }}
+
+      />
+    );
   }
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900">
       
-      {/* SideNavBar - Persistent on Desktop */}
-      <aside className="hidden md:flex flex-col h-screen sticky left-0 top-0 py-6 gap-6 bg-white border-r border-slate-200 w-64 shrink-0 z-40">
-        <div className="px-6 mb-2 flex items-center gap-3">
-          {logoUrl ? (
-            <div className="w-10 h-10 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shadow-xs">
-              <img src={logoUrl} alt="Logo Corporativo" className="max-w-full max-h-full object-contain" />
-            </div>
-          ) : (
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl font-display shadow-md shadow-blue-500/10">
-              E
-            </div>
-          )}
-          <div className="flex flex-col">
-            <h2 className="font-display text-lg font-bold text-slate-900 leading-none">ECU-CRM</h2>
-            <span className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-wider">Admin v1.2 • Ecuador</span>
+      {/* Mobile Top Header */}
+      <div className="md:hidden bg-white border-b border-slate-200 p-4 sticky top-0 z-30 flex justify-between items-center shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+            {logoUrl ? <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" /> : <Building2 className="w-4 h-4 text-white" />}
+          </div>
+          <div>
+            <h1 className="font-display font-bold text-slate-900 text-lg leading-none">S.I.D-CRM</h1>
+            {activeDepartment && <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">{activeDepartment}</p>}
           </div>
         </div>
+        <button 
+          onClick={() => setShowMobileMenu(!showMobileMenu)}>
+          <Menu className="w-6 h-6 text-slate-600" />
+        </button>
+      </div>
 
-
+      {/* SideNavBar - Persistent on Desktop */}
+      <aside className="hidden md:flex flex-col h-screen sticky left-0 top-0 py-6 gap-6 bg-white border-r border-slate-200 w-64 shrink-0 z-40">
+        <div className="p-4 border-b border-slate-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+              {logoUrl ? <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" /> : <Building2 className="w-5 h-5 text-white" />}
+            </div>
+            <div>
+              <h1 className="font-display font-bold text-slate-900 tracking-tight leading-none">S.I.D-CRM</h1>
+              <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest mt-0.5">Admin V1.2 • Ecuador</p>
+            </div>
+          </div>
+          {currentUser?.role === 'Super Admin' && activeDepartment && (
+            <div className="mt-4">
+              <button 
+                onClick={() => {
+                  clearDepartmentContext();
+                  setActiveTab('dashboard');
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-semibold transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Volver a Departamentos
+              </button>
+            </div>
+          )}
+        </div>
 
         <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
           <button
@@ -2044,100 +2614,168 @@ export default function App() {
             }`}
           >
             <LayoutDashboard className="w-5 h-5" />
-            <span>Dashboard</span>
+            <span>{activeDepartment ? `Dashboard: ${activeDepartment}` : 'Departamentos'}</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('clientes')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === 'clientes'
-                ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Users className="w-5 h-5" />
-            <span>Clientes ({clients.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('cotizador')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === 'cotizador'
-                ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <FileText className="w-5 h-5" />
-            <span>Cotizador</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('productos')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === 'productos'
-                ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Package className="w-5 h-5" />
-            <span>Productos / Catálogo</span>
-          </button>
-
-          {(currentUser.role === 'Gerente Comercial' || currentUser.role === 'Administrador') && (
+          {activeDepartment && (
             <>
+              {/* Vendedores y Admins ven Clientes y Cotizador */}
+              {['Vendedor', 'Gerente Comercial', 'Administrador', 'Super Admin', 'Contador'].includes(currentUser.role) && (
+                <>
+                  <button
+                    onClick={() => setActiveTab('clientes')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      activeTab === 'clientes'
+                        ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-5 h-5" />
+                    <span>Clientes ({clients.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('cotizador')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      activeTab === 'cotizador'
+                        ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-5 h-5" />
+                    <span>Facturador Nuevo</span>
+                  </button>
+
+
+
+                  <button
+                    onClick={() => setActiveTab('historial-cotizaciones')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      activeTab === 'historial-cotizaciones'
+                        ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-5 h-5 opacity-60" />
+                    <span>Registro Cotizaciones</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('facturacion')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      activeTab === 'facturacion'
+                        ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Receipt className="w-5 h-5" />
+                    <span>Facturación & SRI ({invoices.length})</span>
+                  </button>
+                </>
+              )}
+
+              {/* Todos (incluyendo Bodeguero) ven Productos */}
               <button
-                onClick={() => setActiveTab('proyectos')}
+                onClick={() => setActiveTab('productos')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                  activeTab === 'proyectos'
+                  activeTab === 'productos'
                     ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Briefcase className="w-5 h-5" />
-                <span>Proyectos Activos ({projects.length})</span>
+                <Package className="w-5 h-5" />
+                <span>Productos / Catálogo</span>
               </button>
 
-              <button
-                onClick={() => setActiveTab('facturacion')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                  activeTab === 'facturacion'
-                    ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Receipt className="w-5 h-5" />
-                <span>Facturación & SRI ({invoices.length})</span>
-              </button>
+              {/* Sólo Admins ven Proyectos, Reportes Financieros y Recursos Humanos */}
+              {['Administrador', 'Super Admin', 'Contador'].includes(currentUser.role) && (
+                <>
+                  <button
+                    onClick={() => setActiveTab('proyectos')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      activeTab === 'proyectos'
+                        ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Briefcase className="w-5 h-5" />
+                    <span>Proyectos Activos ({projects.length})</span>
+                  </button>
 
-              <button
-                onClick={() => setActiveTab('usuarios')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                  activeTab === 'usuarios'
-                    ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <UserPlus className="w-5 h-5" />
-                <span>Accesos y Roles ({users.length})</span>
-              </button>
+                  <button
+                    onClick={() => setActiveTab('reportes')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      activeTab === 'reportes'
+                        ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <TrendingUp className="w-5 h-5" />
+                    <span>Reportes Financieros</span>
+                  </button>
+
+                  <div className="pt-4 mt-2 border-t border-slate-200/60">
+                    <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Recursos Humanos</p>
+                    <button 
+                      onClick={() => setActiveTab('rrhh_empleados')}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                        activeTab === 'rrhh_empleados'
+                          ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      <Users className="w-5 h-5" />
+                      <span>Directorio y Roles</span>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('rrhh_nomina')}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                        activeTab === 'rrhh_nomina'
+                          ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      <DollarSign className="w-5 h-5" />
+                      <span>Nómina y Pagos</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
         </nav>
 
         <div className="mt-auto px-3 border-t border-slate-100 pt-4 space-y-1">
-          {(currentUser.role === 'Gerente Comercial' || currentUser.role === 'Administrador') && (
+          {(currentUser.role === 'Administrador' || currentUser.role === 'Super Admin') && (
+            <>
+              <button
+                onClick={() => setActiveTab('ajustes')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                  activeTab === 'ajustes'
+                    ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Settings className="w-5 h-5" />
+                <span>Configuración</span>
+              </button>
+            </>
+          )}
+
+          {currentUser.role === 'Super Admin' && (
             <button
-              onClick={() => setActiveTab('ajustes')}
+              onClick={() => setActiveTab('fiscal')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                activeTab === 'ajustes'
+                activeTab === 'fiscal'
                   ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Settings className="w-5 h-5" />
-              <span>Ajustes del Sistema</span>
+              <Percent className="w-5 h-5" />
+              <span>Configuración Fiscal</span>
             </button>
           )}
+
 
           <button
             onClick={handleLogout}
@@ -2169,7 +2807,7 @@ export default function App() {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  if (activeTab !== 'clientes' && activeTab !== 'proyectos' && activeTab !== 'facturacion') {
+                  if (activeTab !== 'clientes' && activeTab !== 'facturacion') {
                     setActiveTab('clientes');
                   }
                 }}
@@ -2200,7 +2838,7 @@ export default function App() {
             <button 
               className="text-slate-500 hover:text-blue-600 transition-colors p-1 cursor-pointer" 
               title="Ayuda / SRI Guía" 
-              onClick={() => alert("ECU-CRM Ayuda:\n\n1. Todos los RUC/Cédula deben pasar validación ecuatoriana.\n2. La facturación electrónica aplica el 15% de IVA automáticamente.\n3. La firma digital y autorización con el SRI se simula con claves válidas de 49 dígitos.")}
+              onClick={() => alert("S.I.D-CRM Ayuda:nn1. Todos los RUC/Cédula deben pasar validación ecuatoriana.n2. La facturación electrónica aplica el 15% de IVA automáticamente.n3. La firma digital y autorización con el SRI se simula con claves válidas de 49 dígitos.")}
             >
               <HelpCircle className="w-5 h-5" />
             </button>
@@ -2236,14 +2874,188 @@ export default function App() {
           
           {/* VIEW 1: DASHBOARD */}
           {activeTab === 'dashboard' && (
+            currentUser?.role === 'Super Admin' && !activeDepartment ? (
+              <div className="space-y-8 animate-slide-up">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                  <div className="flex items-center gap-3">
+                    <LayoutDashboard className="w-8 h-8 text-indigo-600" />
+                    <div>
+                      <h1 className="font-display text-3xl font-semibold text-slate-900">Panel Gerencial Global</h1>
+                      <p className="text-slate-500 mt-1">Vista consolidada de todos los departamentos y accesos administrativos</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+
+                    <button onClick={() => setActiveTab('facturacion')} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-semibold text-sm transition-colors">
+                      <FileText className="w-4 h-4" /> Facturación & SRI
+                    </button>
+                  </div>
+                </div>
+
+                {/* KPIs Macro */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Ingresos Totales (Neto)</p>
+                      <p className="text-3xl font-black text-slate-800">${rawInvoices.reduce((acc, i) => acc + (i.total || 0), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                    </div>
+                    <div className="p-4 bg-indigo-50 rounded-full text-indigo-600">
+                      <DollarSign className="w-8 h-8" />
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Clientes Globales</p>
+                      <p className="text-3xl font-black text-slate-800">{rawClients.length}</p>
+                    </div>
+                    <div className="p-4 bg-blue-50 rounded-full text-blue-600">
+                      <Users className="w-8 h-8" />
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Proyectos en Curso</p>
+                      <p className="text-3xl font-black text-slate-800">{rawProjects.length}</p>
+                    </div>
+                    <div className="p-4 bg-emerald-50 rounded-full text-emerald-600">
+                      <Briefcase className="w-8 h-8" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gráfico Comparativo */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                  <h3 className="font-bold text-lg text-slate-800 mb-6">Comparativa de Ingresos por Departamento</h3>
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={[
+                          { name: 'Herramientas', Ingresos: rawInvoices.filter(i => i.department === 'Herramientas').reduce((a, b) => a + (b.total || 0), 0) },
+                          { name: 'Materiales', Ingresos: rawInvoices.filter(i => i.department === 'Materiales').reduce((a, b) => a + (b.total || 0), 0) },
+                          { name: 'Eléctrico', Ingresos: rawInvoices.filter(i => i.department === 'Eléctrico').reduce((a, b) => a + (b.total || 0), 0) }
+                        ]}
+                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontWeight: 600}} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} tickFormatter={(value) => `$${value}`} />
+                        <RechartsTooltip cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Ingresos']} />
+                        <Bar dataKey="Ingresos" fill="#4f46e5" radius={[6, 6, 0, 0]} maxBarSize={60} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                
+                <h3 className="font-bold text-xl text-slate-800 pt-4 border-t border-slate-200">Explorador de Departamentos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {['Herramientas', 'Materiales', 'Eléctrico'].map(dept => {
+                    const deptClients = rawClients.filter(c => c.department === dept);
+                    const deptInvoices = rawInvoices.filter(i => i.department === dept);
+                    const deptProjects = rawProjects.filter(p => p.department === dept);
+                    
+                    return (
+                      <div key={dept} className="bg-slate-50 p-6 rounded-2xl border border-slate-200 hover:shadow-md hover:border-blue-300 transition-all flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-6">
+                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <FolderOpen className="w-6 h-6 text-blue-500 fill-blue-50" />
+                            {dept}
+                          </h2>
+                        </div>
+                        <div className="space-y-4 mb-8 flex-grow">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 font-medium">Clientes</span>
+                            <span className="font-bold text-slate-800">{deptClients.length}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 font-medium">Proyectos</span>
+                            <span className="font-bold text-slate-800">{deptProjects.length}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 font-medium">Facturado</span>
+                            <span className="font-bold text-emerald-600">${deptInvoices.reduce((acc, i) => acc + (i.total || 0), 0).toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => { 
+                          console.log('Botón Entrar al Panel clickeado:', dept);
+                          try {
+                            setDepartmentContext(dept as any); 
+                            setActiveTab('dashboard'); 
+                            window.scrollTo(0,0);
+                          } catch (err) {
+                            console.error('Error al cambiar contexto:', err);
+                          }
+                        }} className="w-full py-2.5 bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 rounded-lg font-bold text-sm transition-colors mt-auto">
+                          Entrar al Panel &rarr;
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
             <div className="space-y-8">
               <div>
                 <h1 className="font-display text-3xl font-semibold text-slate-900">Panel de Control</h1>
-                <p className="text-slate-500 mt-1">Bienvenido al sistema ECU-CRM. Resumen comercial y estado del SRI.</p>
+                <p className="text-slate-500 mt-1">Bienvenido al sistema S.I.D-CRM. Resumen comercial y estado del SRI.</p>
               </div>
 
+              {/* Panel de Alertas de Inventario */}
+              {(inventoryAlerts?.lowStock?.length > 0 || inventoryAlerts?.expiringLots?.length > 0) ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                  <h3 className="text-lg font-bold text-red-800 mb-4 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Alertas Críticas de Inventario
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {inventoryAlerts?.lowStock?.length > 0 ? (
+                      <div className="bg-white p-4 rounded-lg border border-red-100 shadow-sm">
+                        <h4 className="font-bold text-red-700 text-sm mb-2 uppercase tracking-wide">Stock Crítico</h4>
+                        <ul className="space-y-2">
+                          {inventoryAlerts.lowStock.map((item: any, i: number) => (
+                            <li key={`stock-${item.id || i}`} className="text-sm flex justify-between">
+                              <span className="font-medium text-slate-700">{item.name} <span className="text-xs text-slate-400">({item.department})</span></span>
+                              <span className="text-red-600 font-bold">{item.stock} / {item.threshold}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {inventoryAlerts?.expiringLots?.length > 0 ? (
+                      <div className="bg-white p-4 rounded-lg border border-orange-100 shadow-sm">
+                        <h4 className="font-bold text-orange-700 text-sm mb-2 uppercase tracking-wide">Lotes Próximos a Caducar</h4>
+                        <ul className="space-y-2">
+                          {inventoryAlerts.expiringLots.map((lot: any, i: number) => (
+                            <li key={`lot-${lot.id || i}`} className="text-sm flex justify-between">
+                              <span className="font-medium text-slate-700">{lot.productName} <span className="text-xs text-slate-400">({lot.lotNumber})</span></span>
+                              <span className="text-orange-600 font-bold">{lot.expirationDate}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Bento Grid Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                <div 
+                  onClick={() => setActiveTab('productos')}
+                  className="bg-white p-6 rounded-xl border border-slate-200 flex items-center justify-between group hover:shadow-md hover:border-purple-300 transition-all cursor-pointer min-w-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider truncate">Valor Inventario</p>
+                    <p className="font-display text-2xl xl:text-3xl font-bold text-purple-600 mt-2 truncate">
+                      ${products.reduce((acc, p) => acc + ((parseFloat(p.stock as any) || 0) * (parseFloat(p.costPrice as any) || 0)), 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-purple-700 mt-3 flex items-center gap-1 font-semibold truncate">
+                      <Package className="w-3.5 h-3.5 shrink-0" /> {products.length} productos
+                    </p>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-full text-purple-600 group-hover:scale-105 transition-transform shrink-0 ml-3">
+                    <Package className="w-7 h-7" />
+                  </div>
+                </div>
                 <div 
                   onClick={() => setActiveTab('clientes')}
                   className="bg-white p-6 rounded-xl border border-slate-200 flex items-center justify-between group hover:shadow-md hover:border-blue-300 transition-all cursor-pointer min-w-0"
@@ -2393,7 +3205,7 @@ export default function App() {
                         <div className="flex justify-between text-xs mb-2">
                           <span className="font-medium text-slate-700 flex items-center gap-1.5">
                             <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
-                            Contacto Inicial
+                            Nuevo Lead
                           </span>
                           <span className="font-bold text-slate-900">{statusCounts.prospectos}%</span>
                         </div>
@@ -2461,6 +3273,7 @@ export default function App() {
 
               </div>
             </div>
+            )
           )}
 
           {/* VIEW 2: CLIENTS SCREEN (MANAGEMENT & DETAIL) */}
@@ -2469,8 +3282,8 @@ export default function App() {
               
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div>
-                  <h2 className="font-display text-3xl font-semibold text-slate-900">Gestión de Clientes</h2>
-                  <p className="text-slate-500 mt-1">Filtre, registre y haga seguimiento a su cartera en Ecuador.</p>
+                  <h2 className="font-display text-3xl font-semibold text-slate-900">Directorio de Clientes</h2>
+                  <p className="text-slate-500 mt-1">Gestión de cartera de clientes y prospectos.</p>
                 </div>
 
                 <div className="flex gap-2 w-full md:w-auto">
@@ -2505,21 +3318,21 @@ export default function App() {
                   <span className="font-display text-2xl font-bold text-blue-600 mt-1">{clients.length}</span>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col border-l-4 border-l-orange-500 shadow-sm">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Contacto Inicial</span>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Nuevo Lead</span>
                   <span className="font-display text-2xl font-bold text-slate-800 mt-1">
-                    {clients.filter(c => c.status === 'initial').length}
+                    {clients.filter(c => c.status === 'nuevo lead').length}
                   </span>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col border-l-4 border-l-blue-600 shadow-sm">
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">En Desarrollo</span>
                   <span className="font-display text-2xl font-bold text-slate-800 mt-1">
-                    {clients.filter(c => c.status === 'development').length}
+                    {clients.filter(c => c.status === 'en desarrollo').length}
                   </span>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col border-l-4 border-l-emerald-600 shadow-sm">
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Facturados</span>
                   <span className="font-display text-2xl font-bold text-emerald-650 mt-1">
-                    {clients.filter(c => c.status === 'billed').length}
+                    {clients.filter(c => c.status === 'cobrado').length}
                   </span>
                 </div>
               </div>
@@ -2535,7 +3348,7 @@ export default function App() {
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm text-slate-700 outline-none"
                     >
                       <option value="all">Ver Todos los Estados</option>
-                      <option value="initial">Contacto Inicial</option>
+                      <option value="initial">Nuevo Lead</option>
                       <option value="development">En Desarrollo</option>
                       <option value="billed">Facturado</option>
                       <option value="finished">Finalizado</option>
@@ -2620,9 +3433,9 @@ export default function App() {
                                 <td className="px-6 py-5">
                                   <div className="flex items-center gap-3">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${
-                                      client.status === 'initial' ? 'bg-orange-500' :
-                                      client.status === 'development' ? 'bg-blue-600' :
-                                      client.status === 'billed' ? 'bg-emerald-600' : 'bg-slate-650'
+                                      client.status === 'nuevo lead' ? 'bg-orange-500' :
+                                      client.status === 'en desarrollo' ? 'bg-blue-600' :
+                                      client.status === 'cobrado' ? 'bg-emerald-600' : 'bg-slate-650'
                                     }`}>
                                       {client.initials}
                                     </div>
@@ -2718,9 +3531,9 @@ export default function App() {
                         <div className="flex items-center justify-between mt-3">
                           <div className="flex items-center gap-3">
                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white text-lg ${
-                              currentClientDetail.status === 'initial' ? 'bg-orange-500' :
-                              currentClientDetail.status === 'development' ? 'bg-blue-600' :
-                              currentClientDetail.status === 'billed' ? 'bg-emerald-600' : 'bg-slate-650'
+                              currentClientDetail.status === 'nuevo lead' ? 'bg-orange-500' :
+                              currentClientDetail.status === 'en desarrollo' ? 'bg-blue-600' :
+                              currentClientDetail.status === 'cobrado' ? 'bg-emerald-600' : 'bg-slate-650'
                             }`}>
                               {currentClientDetail.initials}
                             </div>
@@ -2752,7 +3565,7 @@ export default function App() {
                             onChange={(e) => handleChangeStatus(e.target.value as ClientStatus)}
                             className="flex-1 py-2 px-3 bg-blue-600 text-white rounded-lg text-xs font-semibold outline-none cursor-pointer"
                           >
-                            <option value="initial">➔ Contacto Inicial</option>
+                            <option value="initial">➔ Nuevo Lead</option>
                             <option value="development">➔ En Desarrollo</option>
                             <option value="billed">➔ Facturado</option>
                             <option value="finished">➔ Finalizado</option>
@@ -2812,7 +3625,7 @@ export default function App() {
                         <div className="border-t border-slate-100 pt-6 space-y-4">
                           <div className="flex justify-between items-center mb-1">
                             <h5 className="font-display font-bold text-sm text-slate-800">Bitácora de Seguimiento</h5>
-                            <span className="text-[11px] text-slate-450">{currentClientDetail.timeline.length} eventos</span>
+                            <span className="text-[11px] text-slate-450">{currentClientDetail.timeline?.length || 0} eventos</span>
                           </div>
 
                           <form onSubmit={handleAddNote} className="flex gap-2">
@@ -2841,7 +3654,7 @@ export default function App() {
                           </form>
 
                           <div className="space-y-4 max-h-60 overflow-y-auto pr-1">
-                            {currentClientDetail.timeline.map((event) => (
+                            {(currentClientDetail.timeline || []).map((event: any) => (
                               <div key={event.id} className="p-3 bg-slate-50 border border-slate-100 rounded-lg space-y-1.5">
                                 <div className="flex items-center justify-between">
                                   <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
@@ -2872,7 +3685,6 @@ export default function App() {
                 </div>
 
               </div>
-
             </div>
           )}
 
@@ -2934,13 +3746,23 @@ export default function App() {
                     </div>
                     <div className="flex flex-col gap-1.5 sm:col-span-2">
                       <label className="text-xs font-bold text-slate-500">Identificación Ecuatoriana (Cédula o RUC) <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        value={formIdNumber}
-                        onChange={(e) => setFormIdNumber(e.target.value)}
-                        placeholder="Ej: 1729483759001 o 1729483759"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                      />
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          value={formIdNumber}
+                          onChange={(e) => setFormIdNumber(e.target.value)}
+                          placeholder="Ej: 1729483759001 o 1729483759"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 pr-24 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        />
+                        <button
+                          type="button"
+                          disabled={!formIdNumber || isConsultingSri}
+                          onClick={() => handleConsultaSri(formIdNumber)}
+                          className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-indigo-600 text-white rounded-md font-bold text-[10px] uppercase hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          {isConsultingSri ? '...' : 'Bot SRI'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3056,7 +3878,7 @@ export default function App() {
           )}
 
           {/* VIEW 4: PROYECTOS ACTIVOS */}
-          {activeTab === 'proyectos' && (
+          {false && (
             <div className="space-y-8">
               <div className="flex justify-between items-end">
                 <div>
@@ -3155,7 +3977,7 @@ export default function App() {
                           <div className="flex gap-2">
                             <select 
                               value={project.status}
-                              onChange={(e) => handleUpdateProjectStatus(project.id, e.target.value as Project['status'])}
+                              onChange={(e) => handleUpdateProjectStatus(project.id, e.target.value as any)}
                               className="py-1.5 px-3 border border-slate-200 rounded-lg text-xs bg-slate-50 text-slate-700 cursor-pointer"
                             >
                               <option value="planning">➔ Planificación</option>
@@ -3345,7 +4167,7 @@ export default function App() {
                                   ) : (
                                     <div className="flex justify-end gap-3 items-center">
                                       <button
-                                        onClick={() => alert(`Información SRI Ecuador:\n\nClave de Acceso (49 dígitos):\n${inv.sriAccessKey}\n\nMensaje SRI:\n${inv.sriMessage}`)}
+                                        onClick={() => alert(`Información SRI Ecuador:nnClave de Acceso (49 dígitos):n${inv.sriAccessKey}nnMensaje SRI:n${inv.sriMessage}`)}
                                         className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
                                       >
                                         Ver Clave Acceso
@@ -3627,30 +4449,180 @@ export default function App() {
           {activeTab === 'ajustes' && (
             <div className="max-w-4xl mx-auto space-y-8 animate-slide-up font-sans">
               <div>
-                <h1 className="font-display text-3xl font-semibold text-slate-900">Ajustes del CRM</h1>
-                <p className="text-slate-500 mt-1">Configuración comercial, personalización e identidad corporativa.</p>
+                <h1 className="font-display text-3xl font-semibold text-slate-900">Configuración</h1>
+                <p className="text-slate-500 mt-1">Configuración del departamento e integraciones.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
+                {/* Configuración Fiscal (RUC, Empresa, Dirección) */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:col-span-2">
+                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2 mb-4">
+                    <Building2 className="w-5 h-5 text-blue-500" />
+                    Datos de la Empresa / Emisor
+                  </h3>
+                  <form onSubmit={handleSaveFiscalSettings} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* RUC con BOT SRI */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">RUC</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={fiscalFormRuc}
+                          onChange={(e) => setFiscalFormRuc(e.target.value)}
+                          placeholder="Ej. 0912345678001"
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 pr-24 text-xs outline-none font-mono"
+                        />
+                        <button
+                          type="button"
+                          disabled={!fiscalFormRuc || isConsultingSri}
+                          onClick={async () => {
+                            if (!fiscalFormRuc) return;
+                            setIsConsultingSri(true);
+                            try {
+                              const res = await fetch(`/api/consulta-sri?ruc=${fiscalFormRuc}`);
+                              const data = await res.json();
+                              if (data.success) {
+                                setFiscalFormNombre(data.razonSocial || '');
+                                if (data.address && data.address !== 'No encontrada') {
+                                  setFiscalFormDireccion(data.address);
+                                }
+                                playSuccessSound();
+                              } else {
+                                window.alert(data.error || 'Error al consultar SRI');
+                              }
+                            } catch (e) {
+                              window.alert('Error de conexión al consultar SRI');
+                            } finally {
+                              setIsConsultingSri(false);
+                            }
+                          }}
+                          className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-indigo-600 text-white rounded-md font-bold text-xs uppercase hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center cursor-pointer"
+                        >
+                          {isConsultingSri ? '...' : 'Bot SRI'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Razón Social */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Razón Social / Nombre Comercial</label>
+                      <input
+                        type="text"
+                        value={fiscalFormNombre}
+                        onChange={(e) => setFiscalFormNombre(e.target.value)}
+                        placeholder="Ej. S.I.D-CRM Soluciones"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Slogan */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Slogan o Descripción</label>
+                      <input
+                        type="text"
+                        value={fiscalFormSlogan}
+                        onChange={(e) => setFiscalFormSlogan(e.target.value)}
+                        placeholder="Ej. Soporte Técnico SRI y Soluciones Empresariales"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Dirección */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Dirección Matriz</label>
+                      <input
+                        type="text"
+                        value={fiscalFormDireccion}
+                        onChange={(e) => setFiscalFormDireccion(e.target.value)}
+                        placeholder="Ej. Av. Principal y Secundaria"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Teléfono */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Teléfono</label>
+                      <input
+                        type="text"
+                        value={fiscalFormTelefono}
+                        onChange={(e) => setFiscalFormTelefono(e.target.value)}
+                        placeholder="Ej. 0987654321"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Firma Electrónica */}
+                    <div className="flex flex-col gap-1.5 font-sans md:col-span-2">
+                      <label className="text-xs font-bold text-slate-700">Firma Electrónica (Imagen)</label>
+                      <div className="flex items-center gap-4 py-2 border border-slate-200 rounded-lg p-3 bg-slate-50">
+                        <div className="w-24 h-12 bg-white border border-slate-200 rounded-md flex items-center justify-center overflow-hidden shrink-0 relative group">
+                          {fiscalFormFirma ? (
+                            <>
+                              <img src={fiscalFormFirma} alt="Firma" className="max-w-full max-h-full object-contain p-1" />
+                              <button
+                                type="button"
+                                onClick={() => setFiscalFormFirma('')}
+                                className="absolute inset-0 bg-red-600/90 text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              >
+                                Quitar
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-medium">Sin Firma</span>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => setFiscalFormFirma(reader.result as string);
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">Se usará en la parte inferior de los PDFs de proformas/facturas.</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="md:col-span-2 flex justify-end mt-2">
+                      <button
+                        type="submit"
+                        className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-all shadow-xs cursor-pointer"
+                      >
+                        Guardar Configuración
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
                 {/* Personalización e Imagen Corporativa */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between">
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between md:col-span-2">
                   <div className="space-y-4">
                     <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-blue-500" />
-                      Imagen Corporativa
+                      Logo del Departamento ({currentUser.department})
                     </h3>
                     <div className="flex items-center gap-4 py-2">
-                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-350 flex items-center justify-center bg-slate-50 overflow-hidden relative group">
+                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-350 flex items-center justify-center bg-slate-50 overflow-hidden relative group shrink-0">
                         {logoUrl ? (
                           <>
                             <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
                             <button 
                               type="button"
                               onClick={() => {
-                                localStorage.removeItem('ecu_crm_company_logo');
+                                localStorage.removeItem(`sid_crm_logo_${currentUser.department}`);
                                 setLogoUrl(null);
-                                playSuccessSound();
+                                let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+                                if (link) link.href = '/vite.svg'; // Reset
+                                window.alert("Logo eliminado del departamento");
                               }}
                               className="absolute inset-0 bg-red-600/90 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                             >
@@ -3673,235 +4645,59 @@ export default function App() {
                                 const reader = new FileReader();
                                 reader.onload = () => {
                                   const base64 = reader.result as string;
-                                  localStorage.setItem('ecu_crm_company_logo', base64);
+                                  localStorage.setItem(`sid_crm_logo_${currentUser.department}`, base64);
                                   setLogoUrl(base64);
-                                  playSuccessSound();
+                                  
+                                  let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+                                  if (!link) {
+                                    link = document.createElement('link');
+                                    link.rel = 'icon';
+                                    document.head.appendChild(link);
+                                  }
+                                  link.href = base64;
+                                  
+                                  window.alert(`Logo configurado para el departamento de ${currentUser.department}`);
                                 };
                                 reader.readAsDataURL(file);
                               }
                             }}
-                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-550 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
                           />
                         </label>
-                        <p className="text-[10px] text-slate-400">PNG o JPG recomendado (máx. 2MB)</p>
+                        <p className="text-[10px] text-slate-400">PNG o JPG recomendado (máx. 2MB). El logo será visible únicamente para el departamento de {currentUser.department}.</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Sonidos de Interfaz */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between">
-                  <div className="space-y-4">
-                    <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
-                      <Bell className="w-5 h-5 text-blue-500" />
-                      Efectos de Sonido
-                    </h3>
-                    <div className="flex items-center justify-between py-2">
-                      <div>
-                        <p className="text-xs font-bold text-slate-700 font-sans">Sonidos de Interfaz</p>
-                        <p className="text-[10px] text-slate-400 mt-1">Reproducir tonos al navegar o realizar acciones.</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer select-none">
-                        <input 
-                          type="checkbox" 
-                          checked={soundsEnabled}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setSoundsEnabled(val);
-                            localStorage.setItem('ecu_crm_interface_sounds', val ? 'true' : 'false');
-                            if (val) {
-                              // Temporarily set context to play test success sound
-                              localStorage.setItem('ecu_crm_interface_sounds', 'true');
-                              playSuccessSound();
-                            }
-                          }}
-                          className="sr-only peer" 
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-350 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Persistencia de Datos */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
-                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
-                    <History className="w-5 h-5 text-blue-500" />
-                    Persistencia Base de Datos
+                {/* Ajustes Generales del Sistema */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:col-span-2">
+                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2 mb-4">
+                    <Settings className="w-5 h-5 text-blue-500" />
+                    Preferencias del Sistema
                   </h3>
-                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between gap-4">
+                  <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-slate-50">
                     <div>
-                      <p className="text-xs font-bold text-slate-700">Restablecer database.json</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{clients.length} clientes, {projects.length} proyectos, {invoices.length} facturas.</p>
+                      <h4 className="text-sm font-bold text-slate-800">Efectos de Sonido</h4>
+                      <p className="text-xs text-slate-500">Reproducir sonidos al realizar acciones exitosas.</p>
                     </div>
-                    <button 
+                    <button
                       type="button"
                       onClick={() => {
-                        handleResetData();
-                        playSuccessSound();
+                        const newVal = !soundsEnabled;
+                        setSoundsEnabled(newVal);
+                        localStorage.setItem('sid_crm_sounds', JSON.stringify(newVal));
+                        if (newVal) {
+                          const audio = new Audio('/success.mp3');
+                          audio.volume = 0.5;
+                          audio.play().catch(e => console.error("Audio error", e));
+                        }
                       }}
-                      className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all cursor-pointer border border-red-200 flex items-center gap-1.5"
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${soundsEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
                     >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Restablecer
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${soundsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                   </div>
-                </div>
-
-                {/* Gemini OCR Config */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
-                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-blue-500" />
-                    Motor de Inteligencia Artificial (SRI OCR)
-                  </h3>
-                  <form onSubmit={handleSaveGeminiKey} className="space-y-3">
-                    <div className="flex flex-col gap-1.5 font-sans">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-slate-700">Google Gemini API Key</label>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isKeyConfigured ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
-                          {isKeyConfigured ? 'ACTIVO (Modo Real)' : 'SIMULADOR ACTIVO (Demo)'}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <input
-                            type={showGeminiKey ? "text" : "password"}
-                            value={geminiKey}
-                            onChange={(e) => setGeminiKey(e.target.value)}
-                            placeholder={isKeyConfigured ? "••••••••••••••••••••••••••••••••" : "Ingresa tu API Key de Gemini..."}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-mono"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowGeminiKey(!showGeminiKey)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655 text-xs font-semibold cursor-pointer"
-                          >
-                            {showGeminiKey ? 'Ocultar' : 'Mostrar'}
-                          </button>
-                        </div>
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-                        >
-                          Guardar
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-
-                {/* Configuración de Emisor Fiscal */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4 md:col-span-2">
-                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-blue-500" />
-                    Configuración de Emisor Fiscal y Firma
-                  </h3>
-                  <form onSubmit={handleSaveFiscalSettings} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      <div className="flex flex-col gap-1">
-                        <label className="font-bold text-slate-700">Nombre Comercial / Razón Social</label>
-                        <input 
-                          type="text"
-                          value={fiscalFormNombre}
-                          onChange={(e) => setFiscalFormNombre(e.target.value)}
-                          placeholder="Ej. ECUTECH S.A."
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-bold text-slate-700">Slogan o Subtítulo</label>
-                        <input 
-                          type="text"
-                          value={fiscalFormSlogan}
-                          onChange={(e) => setFiscalFormSlogan(e.target.value)}
-                          placeholder="Ej. Soluciones tecnológicas del futuro"
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-bold text-slate-700">RUC Emisor</label>
-                        <input 
-                          type="text"
-                          value={fiscalFormRuc}
-                          onChange={(e) => setFiscalFormRuc(e.target.value)}
-                          placeholder="Ej. 1792837465001"
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-bold text-slate-700">Teléfono</label>
-                        <input 
-                          type="text"
-                          value={fiscalFormTelefono}
-                          onChange={(e) => setProfileFormPhone(e.target.value)}
-                          placeholder="Ej. 0998877665"
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1 sm:col-span-2">
-                        <label className="font-bold text-slate-700">Dirección Matriz</label>
-                        <input 
-                          type="text"
-                          value={fiscalFormDireccion}
-                          onChange={(e) => setFiscalFormDireccion(e.target.value)}
-                          placeholder="Ej. Av. Amazonas N24-100 y Wilson, Quito"
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1.5 sm:col-span-2 border-t border-slate-100 pt-4">
-                        <label className="font-bold text-slate-700">Firma Electrónica (Imagen o Archivo .p12)</label>
-                        <div className="flex items-center gap-4 py-2">
-                          <div className="w-24 h-20 rounded-xl border-2 border-dashed border-slate-350 flex items-center justify-center bg-slate-50 overflow-hidden relative group">
-                            {fiscalFormFirma ? (
-                              <>
-                                <img src={fiscalFormFirma} alt="Firma Electrónica" className="w-full h-full object-contain p-1" />
-                                <button 
-                                  type="button"
-                                  onClick={() => {
-                                    setFiscalFormFirma('');
-                                    playSuccessSound();
-                                  }}
-                                  className="absolute inset-0 bg-red-650/90 text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                >
-                                  Eliminar
-                                </button>
-                              </>
-                            ) : (
-                              <Upload className="w-5 h-5 text-slate-400" />
-                            )}
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <input 
-                              type="file" 
-                              accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = () => {
-                                    const base64 = reader.result as string;
-                                    setFiscalFormFirma(base64);
-                                    playSuccessSound();
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                              className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                            />
-                            <p className="text-[10px] text-slate-400">Seleccione una imagen con fondo transparente o firma digitalizada (máx. 2MB)</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-all shadow-xs cursor-pointer"
-                      >
-                        Guardar Datos Fiscales
-                      </button>
-                    </div>
-                  </form>
                 </div>
 
               </div>
@@ -3923,6 +4719,7 @@ export default function App() {
                     setUserFormName('');
                     setUserFormEmail('');
                     setUserFormRole('Vendedor');
+                    setUserFormDepartment('Herramientas');
                     setUserFormPassword('');
                     setIsUserModalOpen(true);
                   }}
@@ -3972,6 +4769,7 @@ export default function App() {
                                 setUserFormName(u.name);
                                 setUserFormEmail(u.email);
                                 setUserFormRole(u.role);
+                                setUserFormDepartment(u.department || 'Herramientas');
                                 setUserFormPassword(u.password || '');
                                 setIsUserModalOpen(true);
                               }}
@@ -4012,11 +4810,42 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW 8.5: HISTORIAL COTIZACIONES */}
+          {activeTab === 'historial-cotizaciones' && (
+            <QuotationsHistory 
+              department={activeDepartment} 
+              onDownloadPDF={(quote) => {
+                downloadDualZipHelper(quote, logoUrl, fiscalSettings, rawProducts, providers);
+              }}
+              onConvert={(quote) => {
+                setActiveTab('facturacion');
+                setFacturacionSubTab('list');
+                if (quote.client_id && quote.client_id !== 'N/A') {
+                  setInvClientId(quote.client_id);
+                } else {
+                  // Find consumer final or clear
+                  const cf = clients.find(c => c.company === 'Consumidor Final' || c.ruc === '9999999999999');
+                  if (cf) setInvClientId(cf.id);
+                  else setInvClientId('');
+                }
+                if (quote.items && quote.items.length > 0) {
+                  const mappedItems = quote.items.map((i: any) => ({
+                    description: i.description || i.name || '',
+                    quantity: i.quantity || 1,
+                    unitPrice: i.unitPrice || i.price || 0
+                  }));
+                  setInvItems(mappedItems);
+                }
+                setIsInvoiceModalOpen(true);
+              }}
+            />
+          )}
+
           {/* VIEW 8: COTIZADOR */}
           {activeTab === 'cotizador' && (
             <div className="max-w-5xl mx-auto space-y-8 animate-slide-up font-sans">
               <div>
-                <h1 className="font-display text-3xl font-semibold text-slate-900">Cotizador de Servicios</h1>
+                <h1 className="font-display text-3xl font-semibold text-slate-900">Facturador de Servicios</h1>
                 <p className="text-slate-500 mt-1">Genere cotizaciones comerciales de forma ágil para sus clientes.</p>
               </div>
 
@@ -4102,7 +4931,7 @@ export default function App() {
                             value={item.description}
                             onChange={(e) => {
                               const selectedDesc = e.target.value;
-                              const matchedProd = products.find(p => p.name === selectedDesc);
+                              const matchedProd = rawProducts.find(p => p.name === selectedDesc);
                               const updated = [...quoteItems];
                               updated[idx].description = selectedDesc;
                               if (matchedProd) {
@@ -4113,13 +4942,13 @@ export default function App() {
                             className="w-full border border-slate-200 rounded-lg p-2 text-xs outline-none bg-slate-50 focus:bg-white focus:ring-1 focus:ring-blue-500 cursor-pointer"
                           >
                             <option value="">Seleccione un producto o servicio...</option>
-                            {products.map(p => (
+                            {getCheapestProducts(rawProducts).map(p => (
                               <option key={p.id} value={p.name}>
                                 {p.name} ({p.sku}) - ${p.unitPrice.toFixed(2)}
                               </option>
                             ))}
-                            {item.description && !products.some(p => p.name === item.description) && (
-                              <option value={item.description}>{item.description}</option>
+                            {item.description && !getCheapestProducts(rawProducts).some(p => p.name === item.description) && (
+                              <option value={item.description}>{item.description} (Personalizado)</option>
                             )}
                           </select>
                         </div>
@@ -4174,28 +5003,127 @@ export default function App() {
 
                 {/* Calculation Totals */}
                 <div className="flex justify-between items-start gap-4">
-                  <div className="text-xs text-slate-400 leading-relaxed max-w-sm">
-                    El IVA es calculado a la tasa vigente del 15% aplicable en Ecuador para servicios profesionales y consultoría.
+                  <div className="flex flex-col gap-4 w-full max-w-sm">
+                    <div className="text-xs text-slate-400 leading-relaxed">
+                      El IVA es calculado a la tasa vigente del 15% aplicable en Ecuador para servicios profesionales y consultoría.
+                    </div>
+                    
+                    {/* Parámetros de Retención (Expandible) */}
+                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                      <button 
+                        type="button"
+                        onClick={() => setShowQuoteRetentions(!showQuoteRetentions)}
+                        className="w-full flex justify-between items-center p-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Settings className="w-4 h-4 text-slate-400" />
+                          Parámetros de Retención (Opcional)
+                        </div>
+                        {showQuoteRetentions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                      
+                      {showQuoteRetentions && (
+                        <div className="p-4 border-t border-slate-200 space-y-4 bg-white animate-fade-in">
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">% Retención en la Fuente</label>
+                            <div className="relative">
+                              <select 
+                                value={quoteRetFuente} 
+                                onChange={(e) => setQuoteRetFuente(parseFloat(e.target.value) || 0)}
+                                className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-xs outline-none appearance-none cursor-pointer"
+                              >
+                                {[
+                                  { val: 0, label: "0% - RIMPE Negocio Popular" },
+                                  { val: 1, label: "1% - RIMPE Emprendedor / Bienes" },
+                                  { val: 1.75, label: "1.75% - Transferencia de bienes" },
+                                  { val: 2, label: "2% - Servicios en general" },
+                                  { val: 2.75, label: "2.75% - Liquidaciones de compra" },
+                                  { val: 3, label: "3% - Servicios de mano de obra" },
+                                  { val: 5, label: "5% - Servicios profesionales" },
+                                  { val: 8, label: "8% - Honorarios y otras rentas" },
+                                  { val: 10, label: "10% - Servicios de docencia / Honorarios" }
+                                ].map(opt => (
+                                  <option key={opt.val} value={opt.val}>{opt.label} {opt.val === globalTaxes.retencionFuente ? '(Admin)' : ''}</option>
+                                ))}
+                              </select>
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">% Retención de IVA</label>
+                            <div className="relative">
+                              <select 
+                                value={quoteRetIva} 
+                                onChange={(e) => setQuoteRetIva(parseFloat(e.target.value) || 0)}
+                                className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-xs outline-none appearance-none cursor-pointer"
+                              >
+                                {[
+                                  { val: 0, label: "0% - Sin retención" },
+                                  { val: 10, label: "10% - Retención (Bienes)" },
+                                  { val: 20, label: "20% - Retención (Bienes/Servicios)" },
+                                  { val: 30, label: "30% - Retención (Bienes)" },
+                                  { val: 50, label: "50% - Retención" },
+                                  { val: 70, label: "70% - Retención (Servicios)" },
+                                  { val: 100, label: "100% - Retención (Honorarios Profesionales)" }
+                                ].map(opt => (
+                                  <option key={opt.val} value={opt.val}>{opt.label} {opt.val === globalTaxes.retencionIva ? '(Admin)' : ''}</option>
+                                ))}
+                              </select>
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="w-72 border border-slate-200 rounded-lg bg-slate-50/50 overflow-hidden divide-y divide-slate-150 text-xs">
-                    <div className="flex justify-between p-3">
-                      <span className="font-semibold text-slate-600">Subtotal</span>
-                      <span className="font-mono text-slate-900">${
-                        quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0).toFixed(2)
-                      }</span>
-                    </div>
-                    <div className="flex justify-between p-3">
-                      <span className="font-semibold text-slate-600">IVA 15%</span>
-                      <span className="font-mono text-slate-900">${
-                        (quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0) * 0.15).toFixed(2)
-                      }</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-blue-50/50 font-bold border-t border-slate-250">
-                      <span className="text-slate-900">Total a Cotizar</span>
-                      <span className="font-mono text-blue-900 text-sm">${
-                        (quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0) * 1.15).toFixed(2)
-                      }</span>
-                    </div>
+
+                  <div className="w-80 border border-slate-200 rounded-lg bg-slate-50/50 overflow-hidden divide-y divide-slate-150 text-xs">
+                    {(() => {
+                      const subtotal = quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+                      const iva = subtotal * 0.15;
+                      const valRetFuente = subtotal * (quoteRetFuente / 100);
+                      const valRetIva = iva * (quoteRetIva / 100);
+                      const totalNeto = subtotal + iva - valRetFuente - valRetIva;
+                      
+                      return (
+                        <>
+                          <div className="flex justify-between p-3">
+                            <span className="font-semibold text-slate-600">Subtotal</span>
+                            <span className="font-mono text-slate-900">${subtotal.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between p-3">
+                            <span className="font-semibold text-slate-600">IVA 15%</span>
+                            <span className="font-mono text-slate-900">${iva.toFixed(2)}</span>
+                          </div>
+                          
+                          {(valRetFuente > 0 || valRetIva > 0) && (
+                            <div className="p-3 bg-red-50/30 text-red-700 space-y-2 border-t border-dashed border-red-100">
+                              {valRetFuente > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="font-medium">Ret. Fuente ({quoteRetFuente}%)</span>
+                                  <span className="font-mono">- ${valRetFuente.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {valRetIva > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="font-medium">Ret. IVA ({quoteRetIva}%)</span>
+                                  <span className="font-mono">- ${valRetIva.toFixed(2)}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex justify-between p-3 bg-blue-50/50 font-bold border-t border-slate-250">
+                            <span className="text-slate-900 text-sm">Total Neto a Recibir</span>
+                            <span className="font-mono text-blue-900 text-base">${totalNeto.toFixed(2)}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -4221,12 +5149,45 @@ export default function App() {
                         alert("Por favor complete correctamente los ítems de la cotización.");
                         return;
                       }
-                      handlePrintQuote();
+
+                      const subtotal = quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+                      const iva = subtotal * 0.15;
+                      const valRetFuente = subtotal * (quoteRetFuente / 100);
+                      const valRetIva = iva * (quoteRetIva / 100);
+                      const costoTotal = quoteItems.reduce((acc, item) => {
+                        const prod = products.find(p => p.name === item.description);
+                        return acc + (prod ? prod.cost : 0) * item.quantity;
+                      }, 0);
+                      
+                      try {
+                        const asientos = AccountingCore.registrarVenta(
+                          subtotal, 
+                          costoTotal, 
+                          iva, 
+                          valRetFuente, 
+                          valRetIva, 
+                          "Factura generada desde Módulo Facturador",
+                          currentUser.id
+                        );
+                        console.log("Asientos generados automáticamente: ", asientos);
+                        
+                        // Save to API
+                        fetch('/api/data/asientos', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(asientos)
+                        }).catch(console.error);
+
+                        alert("¡Partida Doble Ejecutada con Éxito!\n\nAsiento Venta:\n- DEBE: Bancos/Caja, Retenciones por Cobrar\n- HABER: Ingresos e IVA en Ventas\n\nAsiento Costo:\n- DEBE: Costo de Ventas\n- HABER: Inventarios");
+                        handlePrintQuote();
+                      } catch (e: any) {
+                        alert("Error en el Core Contable: " + e.message);
+                      }
                     }}
                     className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    Generar y Descargar PDF
+                    Procesar Factura y Asiento
                   </button>
                 </div>
 
@@ -4242,85 +5203,507 @@ export default function App() {
                   <h2 className="font-display text-3xl font-semibold text-slate-900">Catálogo de Productos / Inventario</h2>
                   <p className="text-slate-500 mt-1">Gestione los servicios y productos ofertados en las cotizaciones.</p>
                 </div>
+                <div className="flex gap-2 w-full md:w-auto">
+                  {activeCatalogTab === 'maestro' && (
+                    <button
+                      onClick={() => setShowProviderModal(true)}
+                      className="py-2.5 px-4 bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-700 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 duration-100 shadow-sm cursor-pointer"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      Nuevo Proveedor
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setEditingProduct(null);
+                      setProductFormName('');
+                      setProductFormSku('');
+                      setProductFormDescription('');
+                      setProductFormPrice('');
+                      setIsProductModalOpen(true);
+                    }}
+                    className="py-2.5 px-4 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-95 duration-100 shadow-sm cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Crear Producto
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabs Catalogo */}
+              <div className="flex border-b border-slate-200 mb-6">
                 <button
-                  onClick={() => {
-                    setEditingProduct(null);
-                    setProductFormName('');
-                    setProductFormSku('');
-                    setProductFormDescription('');
-                    setProductFormPrice('');
-                    setIsProductModalOpen(true);
-                  }}
-                  className="py-2.5 px-4 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-95 duration-100 shadow-sm cursor-pointer"
+                  onClick={() => setActiveCatalogTab('maestro')}
+                  className={`py-3 px-6 text-sm font-bold border-b-2 ${activeCatalogTab === 'maestro' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                 >
-                  <PlusCircle className="w-4 h-4" />
-                  Crear Producto
+                  Catálogo Maestro (Proveedores)
+                </button>
+                <button
+                  onClick={() => setActiveCatalogTab('publico')}
+                  className={`py-3 px-6 text-sm font-bold border-b-2 ${activeCatalogTab === 'publico' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                >
+                  Catálogo Público (Ventas)
                 </button>
               </div>
 
-              {/* Product Grid / List */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-                {products.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500">
-                    <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <p className="font-semibold text-sm">No hay productos en el catálogo.</p>
-                    <p className="text-xs text-slate-400 mt-1">Haga clic en "Crear Producto" para agregar el primero.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
-                          <th className="p-4">SKU / Código</th>
-                          <th className="p-4">Nombre del Producto / Servicio</th>
-                          <th className="p-4">Descripción</th>
-                          <th className="p-4">Precio Unitario</th>
-                          <th className="p-4 text-center">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-150 text-sm">
-                        {products.map(product => (
-                          <tr key={product.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="p-4 font-mono font-bold text-xs text-slate-500">{product.sku}</td>
-                            <td className="p-4 font-semibold text-slate-800">{product.name}</td>
-                            <td className="p-4 text-slate-500 text-xs max-w-xs truncate">{product.description || 'Sin descripción'}</td>
-                            <td className="p-4 font-bold text-blue-750">${product.unitPrice.toFixed(2)}</td>
-                            <td className="p-4">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => {
-                                    setEditingProduct(product);
-                                    setProductFormName(product.name);
-                                    setProductFormSku(product.sku);
-                                    setProductFormDescription(product.description);
-                                    setProductFormPrice(product.unitPrice.toString());
-                                    setIsProductModalOpen(true);
-                                  }}
-                                  className="p-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-650 rounded text-slate-600 transition-colors cursor-pointer"
-                                  title="Editar"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteProduct(product.id)}
-                                  className="p-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-650 rounded text-slate-600 transition-colors cursor-pointer"
-                                  title="Eliminar"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              {/* Product Grid / List / Provider Cards */}
+              {activeCatalogTab === 'maestro' ? (
+                <div className="animate-slide-up">
+                  {providers.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs p-12 text-center text-slate-500">
+                      <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Users className="w-8 h-8" />
+                      </div>
+                      <h3 className="font-bold text-lg text-slate-700 mb-2">No hay proveedores registrados</h3>
+                      <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">Para mostrar el catálogo maestro por tarjetas, primero debe registrar proveedores. Vaya al botón de "Nuevo Proveedor" para agregar uno nuevo.</p>
+                      <button
+                        onClick={() => setShowProviderModal(true)}
+                        className="px-6 py-2.5 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg font-medium text-sm transition-all"
+                      >
+                        Registrar mi primer Proveedor
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {providers.map(p => (
+                    <div 
+                      key={p.id} 
+                      onClick={() => setSelectedProvider(p)}
+                      className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col"
+                    >
+                      <div className="h-32 bg-slate-50 border-b border-slate-100 flex items-center justify-center p-4">
+                        {p.logo_url ? (
+                          <img src={p.logo_url} alt={p.nombre_empresa} className="max-h-full object-contain" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-2xl font-bold">
+                            {p.nombre_empresa.substring(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-5 flex-1 flex flex-col">
+                        <h3 className="font-bold text-lg text-slate-800 line-clamp-1">{p.nombre_empresa}</h3>
+                        <p className="text-xs text-slate-500 font-mono mt-1">RUC: {p.ruc}</p>
+                        <div className="mt-4 space-y-2 text-sm text-slate-600 flex-1">
+                          <p className="flex items-center gap-2"><Phone className="w-4 h-4 text-slate-400"/> {p.telefono || 'Sin teléfono'}</p>
+                          <p className="flex items-center gap-2"><Mail className="w-4 h-4 text-slate-400"/> {p.email || 'Sin correo'}</p>
+                        </div>
+                        <button className="mt-4 w-full py-2 bg-slate-50 hover:bg-blue-50 text-blue-600 font-semibold text-sm rounded-lg border border-slate-200 transition-colors">
+                          Ver Catálogo
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                   </div>
                 )}
+              </div>
+            ) : (
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs animate-slide-up">
+                  {products.filter(p => p.isPublic).length === 0 ? (
+                    <div className="p-8 text-center text-slate-500">
+                      <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                      <p className="font-semibold text-sm">No hay productos en este catálogo.</p>
+                      <p className="text-xs text-slate-400 mt-1">Active productos del catálogo maestro.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                            <th className="p-4">SKU / Código</th>
+                            <th className="p-4">Nombre del Producto / Servicio</th>
+                            <th className="p-4">Descripción</th>
+                            <th className="p-4">Precio Unitario</th>
+                            <th className="p-4 text-center">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-150 text-sm">
+                          {products.filter(p => p.isPublic).map(product => (
+                            <tr key={product.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-4 font-mono font-bold text-xs text-slate-500">{product.sku}</td>
+                              <td className="p-4 font-semibold text-slate-800">{product.name}</td>
+                              <td className="p-4 text-slate-500 text-xs max-w-xs truncate">{product.description || 'Sin descripción'}</td>
+                              <td className="p-4 font-bold text-blue-750">${product.unitPrice.toFixed(2)}</td>
+                              <td className="p-4">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setEditingProduct(product);
+                                      setProductFormName(product.name);
+                                      setProductFormSku(product.sku);
+                                      setProductFormDescription(product.description);
+                                      setProductFormPrice(product.unitPrice.toString());
+                                      setIsProductModalOpen(true);
+                                    }}
+                                    className="p-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-650 rounded text-slate-600 transition-colors cursor-pointer"
+                                    title="Editar"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProduct(product.id)}
+                                    className="p-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-650 rounded text-slate-600 transition-colors cursor-pointer"
+                                    title="Eliminar"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW 11: PROYECTOS */}
+          {activeTab === 'proyectos' && (
+            <div className="space-y-8 animate-slide-up font-sans">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="font-display text-3xl font-semibold text-slate-900">Gestión de Proyectos</h2>
+                  <p className="text-slate-500 mt-1">Supervise el progreso de los proyectos en {activeDepartment ? `el departamento de ${activeDepartment}` : 'todos los departamentos'}.</p>
+                </div>
+                <button
+                  onClick={() => setIsProjectModalOpen(true)}
+                  className="py-2.5 px-4 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-95 duration-100 shadow-sm cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Nuevo Proyecto
+                </button>
+              </div>
+
+              {projects.length === 0 ? (
+                <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-16 flex flex-col items-center justify-center text-center">
+                  <Briefcase className="w-16 h-16 text-slate-300 mb-4" />
+                  <h3 className="text-xl font-bold text-slate-700 mb-2">No hay proyectos activos</h3>
+                  <p className="text-slate-500 max-w-md">Comience a gestionar grandes ventas o instalaciones creando su primer proyecto.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {projects.map(project => (
+                    <div key={project.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                      
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ${
+                            project.status === 'Completado' ? 'bg-emerald-100 text-emerald-700' :
+                            project.status === 'En Progreso' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {project.status === 'Completado' ? <CheckCircle2 className="w-3.5 h-3.5" /> :
+                             project.status === 'En Progreso' ? <Activity className="w-3.5 h-3.5" /> :
+                             <Clock className="w-3.5 h-3.5" />}
+                            {project.status}
+                          </span>
+                        </div>
+                        {!activeDepartment && (
+                          <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">{project.department}</span>
+                        )}
+                      </div>
+
+                      <h3 className="font-bold text-lg text-slate-800 mb-2">{project.name}</h3>
+                      <p className="text-sm text-slate-500 mb-6 line-clamp-2">{project.description}</p>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex justify-between text-xs font-semibold mb-1">
+                            <span className="text-slate-500">Progreso</span>
+                            <span className="text-indigo-600">{project.progress}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-2">
+                            <div className="bg-indigo-600 h-2 rounded-full transition-all duration-1000" style={{ width: `${project.progress}%` }}></div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                          <div className="flex items-center gap-2 text-slate-500">
+                            <DollarSign className="w-4 h-4" />
+                            <span className="text-sm font-semibold">${project.budget.toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-500">
+                            <Calendar className="w-4 h-4" />
+                            <span className="text-sm font-medium">{project.startDate}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW 13: RECURSOS HUMANOS (RRHH) */}
+          {(activeTab === 'rrhh_empleados' || activeTab === 'rrhh_accesos' || activeTab === 'rrhh_nomina') && ['Administrador', 'Super Admin', 'Contador'].includes(currentUser?.role) && (
+            <HumanResources 
+              users={users} 
+              setUsers={setUsers} 
+              currentUser={currentUser} 
+              logoUrl={logoUrl}
+              initialTab={
+                activeTab === 'rrhh_empleados' ? 'directorio' : 
+                activeTab === 'rrhh_accesos' ? 'accesos' : 'nomina'
+              } 
+            />
+          )}
+          {/* VIEW 12: CONFIGURACIÓN FISCAL */}
+          {activeTab === 'fiscal' && currentUser?.role === 'Super Admin' && (
+            <div className="max-w-6xl mx-auto space-y-8 animate-slide-up font-sans">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-3xl font-black text-slate-900 tracking-tight">Configuración SRI</h1>
+                  <p className="text-slate-500 mt-1 font-medium text-sm">Gestión de porcentajes de retención según Resolución NAC-DGERCGC26-00000009.</p>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full font-bold text-xs tracking-wider uppercase border border-blue-100 self-start md:self-auto">
+                  <ShieldCheck className="w-4 h-4" /> ACCESO: CEO / CONTABILIDAD / AUTORIZADOS
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                {/* Left Column (Info) */}
+                <div className="xl:col-span-5 space-y-6">
+                  {/* Dark Card */}
+                  <div className="bg-[#0f172a] text-white p-8 rounded-[2rem] shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 -mt-4 -mr-4 text-white/5 pointer-events-none">
+                      <FileText className="w-48 h-48" />
+                    </div>
+                    <div className="relative z-10">
+                      <div className="text-blue-400 mb-6 font-bold text-2xl">%</div>
+                      <p className="font-bold mb-4 text-sm leading-relaxed">Según la normativa vigente a partir del <span className="text-blue-300">01 de Marzo de 2026:</span></p>
+                      <ul className="space-y-4 text-sm font-medium text-slate-300">
+                        <li className="flex items-start gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
+                          <span className="leading-relaxed"><strong className="text-white">RIMPE Negocio Popular:</strong> Retención 0%.</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
+                          <span className="leading-relaxed"><strong className="text-white">RIMPE Emprendedor:</strong> Retención 1% (Bienes y Servicios).</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
+                          <span className="leading-relaxed"><strong className="text-white">Agentes de Retención:</strong> Aplican porcentajes detallados en las tablas.</span>
+                        </li>
+                      </ul>
+
+                      <div className="mt-8 bg-[#1e293b] border border-slate-700/50 p-4 rounded-xl flex gap-3 items-start">
+                        <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-400 leading-relaxed italic">
+                          Los cambios realizados aquí impactarán directamente en el cálculo automático de todas las nuevas cotizaciones.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ayuda Rápida Card */}
+                  <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2rem] p-6">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">AYUDA RÁPIDA</p>
+                    <div className="flex justify-between items-center font-bold text-slate-800 cursor-pointer hover:text-blue-600 transition-colors">
+                      ¿Cómo actualizar?
+                      <ChevronDown className="w-5 h-5" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column (Tables) */}
+                <div className="xl:col-span-7 space-y-8">
+                  
+                  {/* IR Table */}
+                  <div className="bg-white border border-slate-200 shadow-sm rounded-[2rem] overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <h3 className="font-black text-lg text-slate-800 flex items-center gap-3 tracking-tight uppercase">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div>
+                        IMPUESTO A LA RENTA (IR)
+                      </h3>
+                      <RefreshCw className="w-5 h-5 text-slate-400 cursor-pointer hover:text-slate-600 transition-colors" onClick={() => playClickSound()} />
+                    </div>
+                    <div className="p-2">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[500px]">
+                          <thead>
+                            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              <th className="p-4 w-20">CÓDIGO</th>
+                              <th className="p-4">CONCEPTO / DESCRIPCIÓN</th>
+                              <th className="p-4 text-right">PORCENTAJE</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50 text-sm">
+                            {/* Row 1 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-blue-600">312</td>
+                              <td className="p-4 font-medium text-slate-600">Transferencia de bienes muebles de naturaleza corporal</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all">
+                                  <input 
+                                    type="number" step="0.01" 
+                                    value={globalTaxes.retencionFuente} 
+                                    onChange={(e) => setGlobalTaxes({ ...globalTaxes, retencionFuente: parseFloat(e.target.value) || 0 })}
+                                    className="w-14 bg-transparent text-right font-black text-slate-800 outline-none hover:text-blue-600 focus:text-blue-600"
+                                  />
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 2 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-blue-600">344</td>
+                              <td className="p-4 font-medium text-slate-600">Servicios donde prevalece la mano de obra</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">3.00</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 3 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-blue-600">304</td>
+                              <td className="p-4 font-medium text-slate-600">Servicios profesionales</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">5.00</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 4 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-blue-600">307</td>
+                              <td className="p-4 font-medium text-slate-600">Servicios de docencia</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">10.00</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 5 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-blue-600">343</td>
+                              <td className="p-4 font-medium text-slate-600">RIMPE Emprendedor</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">1.00</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* IVA Table */}
+                  <div className="bg-white border border-slate-200 shadow-sm rounded-[2rem] overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <h3 className="font-black text-lg text-slate-800 flex items-center gap-3 tracking-tight uppercase">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                        RETENCIÓN DE IVA
+                      </h3>
+                    </div>
+                    <div className="p-2">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[500px]">
+                          <thead>
+                            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              <th className="p-4 w-20">CÓDIGO</th>
+                              <th className="p-4">CONCEPTO / NIVEL DE RETENCIÓN</th>
+                              <th className="p-4 text-right">PORCENTAJE</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50 text-sm">
+                            {/* Row 1 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-emerald-600">IVA10</td>
+                              <td className="p-4 font-medium text-slate-600">Retención IVA 10%</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">10</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 2 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-emerald-600">IVA20</td>
+                              <td className="p-4 font-medium text-slate-600">Retención IVA 20%</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">20</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 3 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-emerald-600">IVA30</td>
+                              <td className="p-4 font-medium text-slate-600">Retención IVA 30%</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all">
+                                  <input 
+                                    type="number" step="0.01" 
+                                    value={globalTaxes.retencionIva} 
+                                    onChange={(e) => setGlobalTaxes({ ...globalTaxes, retencionIva: parseFloat(e.target.value) || 0 })}
+                                    className="w-14 bg-transparent text-right font-black text-slate-800 outline-none hover:text-blue-600 focus:text-blue-600"
+                                  />
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 4 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-emerald-600">IVA70</td>
+                              <td className="p-4 font-medium text-slate-600">Retención IVA 70%</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">70</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Row 5 */}
+                            <tr className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-4 font-bold text-emerald-600">IVA100</td>
+                              <td className="p-4 font-medium text-slate-600">Retención IVA 100%</td>
+                              <td className="p-4 text-right">
+                                <div className="inline-flex items-center justify-end gap-2 bg-slate-50 group-hover:bg-white border border-transparent group-hover:border-slate-200 px-3 py-1.5 rounded-lg transition-all cursor-not-allowed opacity-60">
+                                  <span className="w-14 font-black text-slate-800">100</span>
+                                  <span className="font-black text-slate-800">%</span>
+                                  <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
               </div>
             </div>
           )}
 
-          {/* VIEW 10: PERFIL DE USUARIO */}
+          {/* VIEW 12: REPORTES FINANCIEROS */}
+          {activeTab === 'reportes' && (
+              <FinancialReports currentUser={currentUser} currentUserRole={currentUser?.role} />
+          )}
+
+          {/* VIEW 13: PERFIL DE USUARIO */}
           {activeTab === 'perfil' && (
             <div className="max-w-4xl mx-auto space-y-8 animate-slide-up font-sans">
               <div>
@@ -4393,7 +5776,17 @@ export default function App() {
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="font-bold text-slate-700">Correo Electrónico / Usuario</label>
+                        <label className="font-bold text-slate-700">Usuario</label>
+                        <input 
+                          type="text"
+                          value={profileFormUsername}
+                          onChange={(e) => setProfileFormUsername(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-blue-500 text-slate-800"
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-bold text-slate-700">Correo Electrónico</label>
                         <input 
                           type="email"
                           value={profileFormEmail}
@@ -4438,6 +5831,7 @@ export default function App() {
               </div>
             </div>
           )}
+
 
         </div>
 
@@ -4802,8 +6196,8 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Issuer Info */}
                   <div className="border border-slate-200 rounded-lg p-4 space-y-2 bg-white">
-                    <div className="font-display font-extrabold text-slate-900 text-base md:text-lg tracking-tight">ECU-CRM S.A.</div>
-                    <div className="font-bold text-slate-700 text-[10px] md:text-xs uppercase">ECU-CRM SISTEMAS TRIBUTARIOS S.A.</div>
+                    <div className="font-display font-extrabold text-slate-900 text-base md:text-lg tracking-tight">S.I.D-CRM S.A.</div>
+                    <div className="font-bold text-slate-700 text-[10px] md:text-xs uppercase">S.I.D-CRM SISTEMAS TRIBUTARIOS S.A.</div>
                     <p className="mt-1">
                       <span className="font-bold">Dirección Matriz: </span> 
                       Av. de los Shyris N34-24 y Portugal, Edificio Shyris Park, Quito, Ecuador
@@ -5104,153 +6498,178 @@ export default function App() {
         </div>
       )}
 
-      {/* USER EDIT/CREATE MODAL */}
-      {isUserModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-md p-6 space-y-6 shadow-xl leading-normal animate-modal">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h4 className="font-display font-bold text-lg text-slate-900">
-                {editingUser ? 'Modificar Usuario' : 'Crear Nuevo Usuario'}
-              </h4>
-              <button 
-                onClick={() => {
-                  setIsUserModalOpen(false);
-                  setEditingUser(null);
-                }} 
-                className="text-slate-450 hover:text-slate-700 font-semibold cursor-pointer"
-              >
-                ✕
-              </button>
+      {/* SELECTED PROVIDER MODAL */}
+      {selectedProvider && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-4">
+                {selectedProvider.logo_url ? (
+                  <img src={selectedProvider.logo_url} className="h-12 w-auto object-contain rounded" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                    {selectedProvider.nombre_empresa.substring(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-bold text-slate-800 text-xl">{selectedProvider.nombre_empresa}</h3>
+                  <p className="text-sm text-slate-500">Catálogo de Productos - RUC: {selectedProvider.ruc}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedProvider(null)} className="p-2 hover:bg-slate-200 rounded-lg"><X className="w-6 h-6 text-slate-500" /></button>
             </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                    <th className="p-4">SKU</th>
+                    <th className="p-4">Nombre</th>
+                    <th className="p-4">Costo Compra</th>
+                    <th className="p-4">Precio Venta</th>
+                    <th className="p-4 text-center">Público (Ventas)</th>
+                    <th className="p-4 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-150 text-sm">
+                  {rawProducts.filter(p => p.providerId === selectedProvider.id).map(prod => (
+                    <tr key={prod.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 font-mono font-bold text-xs text-slate-500">{prod.sku}</td>
+                      <td className="p-4 font-semibold text-slate-800">{prod.name}</td>
+                      <td className="p-4 font-bold text-orange-600">${prod.costPrice.toFixed(2)}</td>
+                      <td className="p-4 font-bold text-emerald-600">${prod.unitPrice.toFixed(2)}</td>
+                      <td className="p-4 text-center">
+                        <button 
+                          onClick={async () => {
+                            const updated = { ...prod, isPublic: !prod.isPublic };
+                            setProducts(prev => prev.map(p => p.id === prod.id ? updated : p));
+                            await fetch(`/api/products/${prod.id}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(updated)
+                            });
+                          }}
+                          className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${prod.isPublic ? 'bg-green-500' : 'bg-slate-300'}`}
+                        >
+                          <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${prod.isPublic ? 'left-[22px]' : 'left-[2px]'}`} />
+                        </button>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedProvider(null);
+                              setEditingProduct(prod);
+                              setIsProductModalOpen(true);
+                            }}
+                            className="p-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-650 rounded text-slate-600 transition-colors cursor-pointer"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedProvider(null);
+                              handleDeleteProduct(prod.id);
+                            }}
+                            className="p-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-650 rounded text-slate-600 transition-colors cursor-pointer"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {rawProducts.filter(p => p.providerId === selectedProvider.id).length === 0 && (
+                    <tr><td colSpan={4} className="p-8 text-center text-slate-500">No hay productos asociados a este proveedor.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
-            <form 
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!userFormName.trim() || !userFormEmail.trim() || !userFormPassword.trim()) {
-                  alert("Complete todos los campos.");
-                  return;
-                }
-
-                const userData = {
-                  name: userFormName,
-                  email: userFormEmail,
-                  role: userFormRole,
-                  password: userFormPassword,
-                  avatarUrl: editingUser?.avatarUrl || ''
-                };
-
-                try {
-                  if (editingUser) {
-                    const res = await fetch(`/api/users/${editingUser.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(userData)
-                    });
-                    if (res.ok) {
-                      const updated = await res.json();
-                      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
-                      if (editingUser.id === currentUser.id) {
-                        setCurrentUser(updated);
-                        localStorage.setItem('ecu_crm_user', JSON.stringify(updated));
+      {/* PROVEEDOR MODAL */}
+      {showProviderModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 text-lg">Nuevo Proveedor</h3>
+              <button onClick={() => setShowProviderModal(false)} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5 text-slate-500" /></button>
+            </div>
+            <form onSubmit={handleSaveProvider} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">RUC / CI</label>
+                <div className="relative">
+                  <input required type="text" value={provForm.ruc} onChange={e => setProvForm({...provForm, ruc: e.target.value})} className="w-full px-3 py-2 pr-24 border border-slate-300 rounded-lg" />
+                  <button
+                    type="button"
+                    disabled={!provForm.ruc || isConsultingSri}
+                    onClick={async () => {
+                      if (!provForm.ruc) return;
+                      setIsConsultingSri(true);
+                      try {
+                        const res = await fetch(`/api/consulta-sri?ruc=${provForm.ruc}`);
+                        const data = await res.json();
+                        if (data.success) {
+                          setProvForm({...provForm, nombre_empresa: data.razonSocial || ''});
+                          playSuccessSound();
+                        } else {
+                          alert(data.error || 'Error al consultar SRI');
+                        }
+                      } catch (e) {
+                        alert('Error de conexión al consultar SRI');
+                      } finally {
+                        setIsConsultingSri(false);
                       }
-                      playSuccessSound();
+                    }}
+                    className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-indigo-600 text-white rounded-md font-bold text-xs uppercase hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    {isConsultingSri ? '...' : 'Bot SRI'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Nombre de Empresa</label>
+                <input required type="text" value={provForm.nombre_empresa} onChange={e => setProvForm({...provForm, nombre_empresa: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Condiciones de Pago</label>
+                <input type="text" value={provForm.condiciones_pago} onChange={e => setProvForm({...provForm, condiciones_pago: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg" placeholder="Ej: Contado, Crédito 30 días" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Teléfono</label>
+                  <input type="text" value={provForm.telefono} onChange={e => setProvForm({...provForm, telefono: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Email</label>
+                  <input type="email" value={provForm.email} onChange={e => setProvForm({...provForm, email: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Logotipo (Opcional)</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setProvForm({...provForm, logo_url: reader.result as string});
+                      };
+                      reader.readAsDataURL(file);
                     }
-                  } else {
-                    const res = await fetch('/api/users', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(userData)
-                    });
-                    if (res.ok) {
-                      const saved = await res.json();
-                      setUsers(prev => [...prev, saved]);
-                      playSuccessSound();
-                    } else {
-                      const errData = await res.json();
-                      alert(`Error: ${errData.message}`);
-                      playErrorSound();
-                    }
-                  }
-                } catch (err) {
-                  const mockId = editingUser ? editingUser.id : userFormName.toLowerCase().replace(/\s+/g, '-');
-                  const saved = { ...userData, id: mockId };
-                  if (editingUser) {
-                    setUsers(prev => prev.map(u => u.id === editingUser.id ? saved : u));
-                  } else {
-                    setUsers(prev => [...prev, saved]);
-                  }
-                  playSuccessSound();
-                }
-
-                setIsUserModalOpen(false);
-                setEditingUser(null);
-              }}
-              className="space-y-4"
-            >
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Nombre Completo</label>
-                <input 
-                  type="text" 
-                  value={userFormName}
-                  onChange={(e) => setUserFormName(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none"
-                  required
+                  }} 
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" 
                 />
+                {provForm.logo_url && (
+                  <img src={provForm.logo_url} alt="Logo" className="mt-2 h-16 rounded object-contain bg-slate-50 border border-slate-100" />
+                )}
               </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Usuario / Correo Electrónico</label>
-                <input 
-                  type="text" 
-                  value={userFormEmail}
-                  onChange={(e) => setUserFormEmail(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Rol Asignado</label>
-                <select
-                  value={userFormRole}
-                  onChange={(e) => setUserFormRole(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none cursor-pointer"
-                >
-                  <option value="Administrador">Administrador</option>
-                  <option value="Gerente Comercial">Gerente Comercial</option>
-                  <option value="Vendedor">Vendedor (Acceso Limitado)</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Contraseña</label>
-                <input 
-                  type="password" 
-                  value={userFormPassword}
-                  onChange={(e) => setUserFormPassword(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-550 rounded-lg p-2.5 text-sm outline-none"
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    setIsUserModalOpen(false);
-                    setEditingUser(null);
-                  }}
-                  className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Guardar
-                </button>
-              </div>
+              <button type="submit" className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">Guardar Proveedor</button>
             </form>
           </div>
         </div>
@@ -5258,94 +6677,45 @@ export default function App() {
 
       {/* PRODUCT EDIT/CREATE MODAL */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-md p-6 space-y-6 shadow-xl leading-normal animate-modal">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h4 className="font-display font-bold text-lg text-slate-900">
-                {editingProduct ? 'Modificar Producto' : 'Crear Nuevo Producto'}
-              </h4>
-              <button 
-                onClick={() => {
-                  setIsProductModalOpen(false);
-                  setEditingProduct(null);
-                }} 
-                className="text-slate-450 hover:text-slate-700 font-semibold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleProductSubmit} className="space-y-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Nombre del Producto / Servicio</label>
-                <input 
-                  type="text" 
-                  value={productFormName}
-                  onChange={(e) => setProductFormName(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none"
-                  placeholder="Ej: Licencia Anual ERP"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Código / SKU</label>
-                <input 
-                  type="text" 
-                  value={productFormSku}
-                  onChange={(e) => setProductFormSku(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none"
-                  placeholder="Ej: ERP-LIC-01"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Precio Unitario ($USD)</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  min="0"
-                  value={productFormPrice}
-                  onChange={(e) => setProductFormPrice(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none"
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500">Descripción</label>
-                <textarea 
-                  value={productFormDescription}
-                  onChange={(e) => setProductFormDescription(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-lg p-2.5 text-sm outline-none"
-                  placeholder="Detalles sobre el producto o servicio comercial..."
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    setIsProductModalOpen(false);
-                    setEditingProduct(null);
-                  }}
-                  className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Regresar
-                </button>
-                <button 
-                  type="submit"
-                  className="px-6 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  {editingProduct ? 'Actualizar' : 'Crear Producto'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ProductForm
+          providers={providers}
+          product={editingProduct}
+          onSave={async (prod) => {
+            if (editingProduct) {
+              const res = await fetch(`/api/products/${editingProduct.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(prod)
+              });
+              if (res.ok) {
+                const updated = await res.json();
+                setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+                alert("Producto actualizado");
+                setIsProductModalOpen(false);
+              }
+            } else {
+              const res = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(prod)
+              });
+              if (res.ok) {
+                const saved = await res.json();
+                setProducts(prev => [...prev, saved]);
+                alert("Producto creado");
+                setIsProductModalOpen(false);
+              } else {
+                const errData = await res.json();
+                alert("Error al guardar: " + (errData.error || errData.message || "Verifique los datos."));
+              }
+            }
+          }}
+          onCancel={() => setIsProductModalOpen(false)}
+          existingSkus={products.map(p => p.sku.toLowerCase())}
+          existingCategories={Array.from(new Set(rawProducts.filter(p => p.department === (activeDepartment || currentUser?.department || 'Herramientas') && p.category).map(p => p.category)))}
+          departmentContext={activeDepartment || currentUser?.department || 'Herramientas'}
+          currentUserRole={currentUser?.role}
+        />
       )}
 
       {/* Mobile Navigation Bar */}
@@ -5371,37 +6741,40 @@ export default function App() {
           className={`flex flex-col items-center gap-0.5 cursor-pointer ${activeTab === 'cotizador' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
         >
           <FileText className="w-5 h-5" />
-          <span className="text-[9px]">Cotizador</span>
+          <span className="text-[9px]">Facturador</span>
         </button>
 
         {(currentUser.role === 'Gerente Comercial' || currentUser.role === 'Administrador') && (
-          <>
-            <button 
-              onClick={() => setActiveTab('proyectos')} 
-              className={`flex flex-col items-center gap-0.5 cursor-pointer ${activeTab === 'proyectos' ? 'text-indigo-600 font-bold' : 'text-slate-400'}`}
-            >
-              <Briefcase className="w-5 h-5" />
-              <span className="text-[9px]">Proyectos</span>
-            </button>
+          <button 
+            onClick={() => setActiveTab('facturacion')} 
+            className={`flex flex-col items-center gap-0.5 cursor-pointer ${activeTab === 'facturacion' ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}
+          >
+            <Receipt className="w-5 h-5" />
+            <span className="text-[9px]">Facturas</span>
+          </button>
+        )}
 
-            <button 
-              onClick={() => setActiveTab('facturacion')} 
-              className={`flex flex-col items-center gap-0.5 cursor-pointer ${activeTab === 'facturacion' ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}
-            >
-              <Receipt className="w-5 h-5" />
-              <span className="text-[9px]">Facturas</span>
-            </button>
-
-            <button 
-              onClick={() => setActiveTab('ajustes')} 
-              className={`flex flex-col items-center gap-0.5 cursor-pointer ${activeTab === 'ajustes' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
-            >
-              <Settings className="w-5 h-5" />
-              <span className="text-[9px]">Ajustes</span>
-            </button>
-          </>
+        {(currentUser.role === 'Administrador' || currentUser.role === 'Super Admin') && (
+          <button 
+            onClick={() => setActiveTab('ajustes')} 
+            className={`flex flex-col items-center gap-0.5 cursor-pointer ${activeTab === 'ajustes' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
+          >
+            <Settings className="w-5 h-5" />
+            <span className="text-[9px]">Configuración</span>
+          </button>
         )}
       </nav>
+
+      {/* GLOBAL TOAST NOTIFICATION (Reemplazo de window.alert minimalista) */}
+      {globalToast && (
+        <div 
+          key={globalToast.id} 
+          className="fixed bottom-6 right-6 z-50 animate-slide-up flex items-center bg-slate-800 text-white px-5 py-3.5 rounded-xl shadow-2xl border border-slate-700 pointer-events-none"
+        >
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 mr-3 shrink-0 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+          <p className="text-sm font-medium leading-tight">{globalToast.message}</p>
+        </div>
+      )}
 
     </div>
   );
@@ -5410,10 +6783,10 @@ export default function App() {
 // Subcomponents helper
 interface ProjectCardProps {
   key?: string;
-  project: Project;
+  project: any;
   onSelect: (id: string) => void;
   onToggleTask: (projId: string, taskId: string) => void;
-  onChangeStatus: (projId: string, status: Project['status']) => void;
+  onChangeStatus: (projId: string, status: any) => void;
 }
 
 function ProjectCard({ project, onSelect, onToggleTask, onChangeStatus }: ProjectCardProps) {
@@ -5446,7 +6819,7 @@ function ProjectCard({ project, onSelect, onToggleTask, onChangeStatus }: Projec
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => {
             e.stopPropagation();
-            onChangeStatus(project.id, e.target.value as Project['status']);
+            onChangeStatus(project.id, e.target.value as any);
           }}
           className="py-0.5 px-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[9px] text-slate-650 cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
         >

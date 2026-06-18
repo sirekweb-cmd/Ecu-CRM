@@ -5,6 +5,7 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import express from 'express';
 import apiRouter from './src/server/api';
+import newApiRouter from './src/server/new_api';
 
 export default defineConfig(() => {
   return {
@@ -17,6 +18,7 @@ export default defineConfig(() => {
           const app = express();
           app.use(express.json({ limit: '50mb' }));
           app.use(express.urlencoded({ limit: '50mb', extended: true }));
+          app.use('/api', newApiRouter);
           app.use('/api', apiRouter);
           server.middlewares.use(app);
         }
@@ -34,5 +36,14 @@ export default defineConfig(() => {
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    build: {
+      rollupOptions: {
+        output: {
+          entryFileNames: 'assets/[name]-[hash].js',
+          chunkFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: 'assets/[name]-[hash].[ext]'
+        }
+      }
+    }
   };
 });

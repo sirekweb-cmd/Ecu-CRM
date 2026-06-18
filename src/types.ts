@@ -1,4 +1,18 @@
-export type ClientStatus = 'initial' | 'development' | 'billed' | 'finished';
+export type ClientStatus = 'nuevo lead' | 'en desarrollo' | 'cobrado' | 'finalizado';
+export type ProjectStatus = 'En Planificación' | 'En Progreso' | 'Completado';
+
+export interface Project {
+  id: string;
+  name: string;
+  clientId: string;
+  department: string; // Herramientas | Materiales | Eléctrico
+  status: ProjectStatus;
+  startDate: string;
+  endDate?: string;
+  budget: number;
+  progress: number;
+  description: string;
+}
 
 export interface TimelineEvent {
   id: string;
@@ -25,6 +39,7 @@ export interface Client {
   address?: string;
   notes?: string;
   timeline: TimelineEvent[];
+  department?: string; // Herramientas | Materiales | Eléctrico
 }
 
 export interface ActivityLog {
@@ -41,35 +56,17 @@ export interface ActivityLog {
 export interface User {
   id: string;
   name: string;
+  username?: string;
   email: string;
   role: string;
+  department?: string; // Herramientas | Materiales | Eléctrico | Global
   avatarUrl?: string;
   password?: string;
   phone?: string;
 }
 
-export interface ProjectTask {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-export interface Project {
-  id: string;
-  clientId: string;
-  clientName: string;
-  name: string;
-  description: string;
-  budget: number;
-  startDate: string;
-  endDate: string;
-  status: 'planning' | 'ongoing' | 'testing' | 'completed';
-  progress: number;
-  tasks: ProjectTask[];
-  assignedTo: string;
-}
-
 export interface InvoiceItem {
+  id?: string;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -85,20 +82,44 @@ export interface Invoice {
   dueDate: string;
   items: InvoiceItem[];
   subtotal: number;
+  discount: number;
   taxRate: number; // e.g. 0.15 for IVA 15% in Ecuador
   taxAmount: number;
+  retenciones: number;
   total: number;
   status: 'draft' | 'pending' | 'authorized' | 'rejected';
+  type: 'invoice' | 'quote';
+  department?: string;
+  paymentCondition?: string; // Efectivo | Contraentrega | Tarjeta
   sriAccessKey?: string;
   sriMessage?: string;
+}
+
+export interface ProductLot {
+  id: string;
+  productId: string;
+  lotNumber: string;
+  quantity: number;
+  expirationDate: string;
 }
 
 export interface Product {
   id: string;
   name: string;
   description: string;
+  category: string; // Subcategoría
   sku: string;
+  costPrice: number; // Modificado de cost a costPrice para consistencia con DB
   unitPrice: number;
+  discount: number;
+  stock: number;
+  lowStockThreshold: number; // Agregado
+  weight?: number;
+  dimensions?: string; // Simplificado a string para alinear con DB
+  imageUrl?: string;
+  department: string; // Materiales | Oficina | Florería | Laboratorio
+  isPublic?: boolean;
+  providerId?: string;
 }
 
 export interface FiscalSettings {
@@ -108,5 +129,16 @@ export interface FiscalSettings {
   telefono: string;
   direccion: string;
   firmaElectronica: string;
+  botSriUrl?: string;
 }
 
+export interface Provider {
+  id: string;
+  ruc: string;
+  nombre_empresa: string;
+  condiciones_pago: string;
+  telefono: string;
+  email: string;
+  department: string;
+  logo_url?: string;
+}
