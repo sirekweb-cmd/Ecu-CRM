@@ -300,6 +300,16 @@ export const generateInternalQuoteHtmlString = (
   `;
 };
 
+export const downloadClientPdfHelper = (
+  quoteData: any,
+  logoUrl: string,
+  fiscalSettings: any
+) => {
+  const htmlClient = generateQuoteHtmlString(quoteData, logoUrl, fiscalSettings);
+  const safeClientName = (quoteData.clientName || quoteData.client_name || 'Cliente').replace(/\s+/g, '_');
+  downloadPdfHelper(htmlClient, `Cotizacion_${safeClientName}.pdf`);
+};
+
 export const downloadDualZipHelper = async (
   quoteData: any,
   logoUrl: string,
@@ -2630,7 +2640,7 @@ export default function App() {
           });
           if (!res.ok) throw new Error('Error saving quote');
 
-          downloadDualZipHelper(quoteData, logoUrl, fiscalSettings, rawProducts, providers);
+          downloadClientPdfHelper(quoteData, logoUrl, fiscalSettings);
           alert('Cotización enviada y descargando PDF...');
         }}
 
