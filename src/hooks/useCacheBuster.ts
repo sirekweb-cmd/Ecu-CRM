@@ -1,22 +1,29 @@
 import { useEffect } from 'react';
 
-// Genera un ID de versión único cada vez que se carga en el navegador 
-// Si prefieres usar una versión real, puedes cambiar esto por una variable de entorno como import.meta.env.VITE_APP_VERSION
-const currentAppVersion = "1.0.1"; // Se quitó el Date.getTime() para evitar borrar el localStorage en cada recarga
-
 export const useCacheBuster = () => {
   useEffect(() => {
     const enforceCacheBusting = async () => {
       try {
-        // Verificar versión actual contra la guardada en el almacenamiento local
-        const savedVersion = localStorage.getItem('appVersion');
+        const res = await fetch('/api/version');
+        if (!res.ok) return;
+        const data = await res.json();
+        const currentServerVersion = data.version;
         
-        // Si hay una diferencia de versión (o no existe) y no estamos en medio de un recargo, recargamos
-        if (savedVersion !== currentAppVersion && !sessionStorage.getItem('isReloading')) {
-          console.log('Nueva versión detectada. Limpiando caché y recargando...');
+        const savedVersion = localStorage.getItem('serverVersion');
+        
+        if (savedVersion && savedVersion !== currentServerVersion) {
+          console.log('Nueva versión detectada en el servidor. Limpiando caché y recargando...');
           
-          // Limpiar Storage y Cache API
+          // Preservar la sesión del usuario para no desloguearlo de forma molesta
+          const user = localStorage.getItem('ecu_crm_user');
+          const token = localStorage.getItem('ecu_crm_token');
+          const department = localStorage.getItem('ecu_crm_department');
+          
           localStorage.clear();
+          
+          if (user) localStorage.setItem('ecu_crm_user', user);
+          if (token) localStorage.setItem('ecu_crm_token', token);
+          if (department) localStorage.setItem('ecu_crm_department', department);
           
           if ('caches' in window) {
             const cacheNames = await caches.keys();
@@ -25,7 +32,6 @@ export const useCacheBuster = () => {
             );
           }
 
-          // Desregistrar Service Workers si existen
           if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();
             for (const registration of registrations) {
@@ -33,22 +39,20 @@ export const useCacheBuster = () => {
             }
           }
 
-          // Guardar nueva versión
-          localStorage.setItem('appVersion', currentAppVersion);
-          sessionStorage.setItem('isReloading', 'true');
-
-          // Forzar recarga desde el servidor (no desde la caché)
+          localStorage.setItem('serverVersion', currentServerVersion);
           window.location.reload();
         } else {
-          // Ya se recargó y estamos en la versión correcta
-          sessionStorage.removeItem('isReloading');
-          localStorage.setItem('appVersion', currentAppVersion);
+          localStorage.setItem('serverVersion', currentServerVersion);
         }
       } catch (error) {
-        console.error('Error al limpiar caché:', error);
+        console.error('Error al verificar versión del servidor:', error);
       }
     };
 
     enforceCacheBusting();
+    
+    // Verificar cada 2 minutos en segundo plano
+    const interval = setInterval(enforceCacheBusting, 2 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 };
