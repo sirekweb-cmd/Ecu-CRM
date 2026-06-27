@@ -1,4 +1,4 @@
-import { Client, ActivityLog, User, Invoice } from './types';
+import { Client, ActivityLog, User, Invoice, Product, Project } from './types';
 
 export const INITIAL_CLIENTS: Client[] = [
   {

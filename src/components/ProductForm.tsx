@@ -20,7 +20,7 @@ export default function ProductForm({ product, onSave, onCancel, existingSkus, e
   const [categoryBase, setCategoryBase] = useState(product?.department || departmentContext || 'Herramientas');
   const [newCategory, setNewCategory] = useState('');
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [imageUrls, setImageUrls] = useState<string>(product?.imageUrls?.join(', ') || '');
+  const [imageUrls, setImageUrls] = useState<string>(product?.imageUrl || '');
   const [description, setDescription] = useState(product?.description || '');
   const [providerId, setProviderId] = useState(product?.providerId || '');
 
@@ -36,10 +36,11 @@ export default function ProductForm({ product, onSave, onCancel, existingSkus, e
   const [skuError, setSkuError] = useState('');
 
   // Sección D: Logística
+  const dims = product?.dimensions ? product.dimensions.split('x') : [];
   const [weight, setWeight] = useState<string>(product?.weight?.toString() || '');
-  const [width, setWidth] = useState<string>(product?.dimensions?.width?.toString() || '');
-  const [height, setHeight] = useState<string>(product?.dimensions?.height?.toString() || '');
-  const [depth, setDepth] = useState<string>(product?.dimensions?.depth?.toString() || '');
+  const [width, setWidth] = useState<string>(dims[0] || '');
+  const [height, setHeight] = useState<string>(dims[1] || '');
+  const [depth, setDepth] = useState<string>(dims[2] || '');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 

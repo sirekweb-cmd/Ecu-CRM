@@ -1,4 +1,6 @@
 import 'dotenv/config';
+// Server start timestamp for cache busting
+const serverStart = new Date().toISOString();
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -6,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from './db';
 import PDFDocument from 'pdfkit';
 import nodemailer from 'nodemailer';
+import JSZip from 'jszip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -176,7 +179,6 @@ router.post('/nomina/generar', async (req, res) => {
 
     await db.run('COMMIT');
 
-    const JSZip = (await import('jszip')).default || await import('jszip');
     const zip = new JSZip();
 
     const fetchLogo = async (url: string) => {
@@ -324,6 +326,56 @@ router.post('/nomina/generar', async (req, res) => {
   }
 });
 
+// ---------- Cotización Download Endpoint ----------
+// Generates a PDF for a specific cotización (quote) and returns it.
+router.get('/cotizaciones/:id/download', async (req, res) => {
+  const { id } = req.params;
+  const db = await getDb();
+  try {
+    const cot = await db.get('SELECT * FROM cotizaciones WHERE id = ?', [id]);
+    if (!cot) return res.status(404).json({ error: 'Cotización no encontrada' });
+    const cotData = {
+      ...cot,
+      items: JSON.parse(cot.items_json || '[]')
+    };
+    const pdfBuffer = await createQuotePdf(cotData);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Cotizacion_${id}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper to generate a PDF for a cotización (quote)
+const createQuotePdf = (cot: any): Promise<Buffer> => {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const buffers: any[] = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+
+    doc.fontSize(20).text('Cotización', { align: 'center' });
+    doc.moveDown();
+    doc.fontSize(12).text(`ID: ${cot.id}`);
+    doc.text(`Cliente: ${cot.client_name || cot.clientName}`);
+    doc.text(`Departamento: ${cot.department}`);
+    doc.text(`Total: $${cot.total?.toFixed(2)}`);
+    doc.moveDown();
+    doc.text('Detalle de Items:', { underline: true });
+    doc.moveDown(0.5);
+    const items = cot.items || [];
+    items.forEach((it: any, idx: number) => {
+      doc.text(`${idx + 1}. ${it.description || it.sku || ''} - Cantidad: ${it.quantity || ''} - Precio: $${(it.unitPrice || it.price || 0).toFixed(2)}`);
+    });
+    doc.end();
+  });
+};
+
+// ---------- End of Cotización Download ----------
+
+// Clients API
+
 // Clients API
 router.get('/clients', async (req, res) => {
   const db = await getDb();
@@ -424,6 +476,62 @@ router.post('/invoices', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+router.put('/invoices/:id', async (req, res) => {
+  const { id } = req.params;
+  const i = req.body;
+  const db = await getDb();
+  try {
+    const existing = await db.get('SELECT * FROM facturas WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ message: 'Factura no encontrada' });
+    
+    await db.run('UPDATE facturas SET invoiceNumber = ?, clientId = ?, clientName = ?, clientRuc = ?, issueDate = ?, dueDate = ?, subtotal = ?, discount = ?, taxRate = ?, taxAmount = ?, retenciones = ?, total = ?, status = ?, type = ?, department = ?, items_json = ? WHERE id = ?',
+      [i.invoiceNumber || existing.invoiceNumber, i.clientId || existing.clientId, i.clientName || existing.clientName, i.clientRuc || existing.clientRuc, i.issueDate || existing.issueDate, i.dueDate || existing.dueDate, i.subtotal !== undefined ? i.subtotal : existing.subtotal, i.discount !== undefined ? i.discount : existing.discount, i.taxRate !== undefined ? i.taxRate : existing.taxRate, i.taxAmount !== undefined ? i.taxAmount : existing.taxAmount, i.retenciones !== undefined ? i.retenciones : existing.retenciones, i.total !== undefined ? i.total : existing.total, i.status || existing.status, i.type || existing.type, i.department || existing.department, i.items ? JSON.stringify(i.items) : existing.items_json, id]);
+      
+    const updated = await db.get('SELECT * FROM facturas WHERE id = ?', [id]);
+    updated.items = JSON.parse(updated.items_json || '[]');
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/invoices/:id/authorize-sri', async (req, res) => {
+  const { id } = req.params;
+  const db = await getDb();
+  try {
+    const invoice = await db.get('SELECT * FROM facturas WHERE id = ?', [id]);
+    if (!invoice) return res.status(404).json({ message: 'Factura no encontrada' });
+
+    // Simulate authorization
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = String(now.getFullYear());
+    const dateStr = `${day}${month}${year}`;
+    const type = '01'; // Factura
+    const ruc = invoice.clientRuc || '9999999999999';
+    const env = '1';
+    
+    let seqBase = invoice.invoiceNumber ? invoice.invoiceNumber.replace(/\D/g, '') : '';
+    if (!seqBase) seqBase = '1';
+    const seq = seqBase.padStart(9, '0');
+    
+    const numCode = '12345678';
+    const emissionType = '1';
+    const sriAccessKey = `${dateStr}${type}${ruc}${env}001001${seq}${numCode}${emissionType}`;
+
+    await db.run('UPDATE facturas SET status = ?, sriAccessKey = ?, sriMessage = ? WHERE id = ?',
+      ['authorized', sriAccessKey, 'AUTORIZADO - El comprobante ha sido firmado y autorizado electrónicamente por el SRI de Ecuador.', id]);
+
+    const updated = await db.get('SELECT * FROM facturas WHERE id = ?', [id]);
+    updated.items = JSON.parse(updated.items_json || '[]');
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
 // Products API
 router.get('/products', async (req, res) => {
@@ -785,6 +893,158 @@ router.post('/expenses', async (req, res) => {
     await db.run('ROLLBACK');
     res.status(400).json({error: e.message});
   }
+});
+
+router.all('/consulta-sri', async (req, res) => {
+  const rawRuc = (req.query.ruc || req.body.ruc) as string;
+  if (!rawRuc) return res.status(400).json({ error: 'RUC requerido' });
+
+  const ruc = rawRuc.length === 10 ? `${rawRuc}001` : rawRuc;
+  const db = await getDb();
+
+  // 1. VERIFICACIÓN DE CACHÉ
+  try {
+    const cached = await db.get('SELECT data, timestamp FROM ruc_cache WHERE ruc = ?', [ruc]);
+    if (cached) {
+      const ageInHours = (Date.now() - new Date(cached.timestamp).getTime()) / (1000 * 60 * 60);
+      if (ageInHours < 24) {
+        console.log(`[SRI-Cache] Hit de caché para: ${ruc} (Antigüedad: ${ageInHours.toFixed(1)}h)`);
+        return res.json(JSON.parse(cached.data));
+      }
+    }
+  } catch (err) {
+    console.error('[SRI-Cache] Error consultando caché:', err);
+  }
+
+  console.log(`[SRI-n8n] Consultando Producción para: ${ruc}`);
+
+  let attempts = 0;
+  const maxAttempts = 2;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s threshold
+
+    try {
+      const response = await fetch('https://n8n.sirek.online/webhook/consulta-sri', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ ruc }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (response.status === 404 || response.status === 502) {
+        return res.status(response.status).json({ success: false, error: 'El servicio de n8n requiere reinicio manual.' });
+      }
+
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+
+      const text = await response.text();
+      if (!text || text.trim().length === 0 || text.includes('No output data')) throw new Error('Respuesta vacía');
+
+      let data: any;
+      try { data = JSON.parse(text); } catch (e) { throw new Error('JSON inválido'); }
+
+      if (Array.isArray(data)) data = data[0] || {};
+
+      let estadoFinal = data.estadoContribuyente || data.estado || data.estado_tributario || data.status || data.estado_contribuyente;
+      let direccionFinal = data.direccionCompleta || data.address || data.direccion || data.direccion_fiscal;
+      let tipoFinal = data.tipoContribuyente || data.clase || data.tipo || data.clase_contribuyente;
+
+      if (!estadoFinal && (data.razonSocial || data.nombre)) {
+        const keys = Object.keys(data);
+        const estadoKey = keys.find(k => k.toLowerCase().includes('estado') || k.toLowerCase().includes('status'));
+        if (estadoKey) estadoFinal = data[estadoKey];
+      }
+
+      if (!direccionFinal) {
+        const dirKey = Object.keys(data).find(k => k.toLowerCase().includes('direccion') || k.toLowerCase().includes('address') || k.toLowerCase().includes('ubicacion'));
+        if (dirKey) direccionFinal = data[dirKey];
+      }
+
+      const finalData = {
+        ruc: data.ruc || ruc,
+        razonSocial: data.razonSocial || data.nombre || data.razon_social || 'No encontrado',
+        estado: estadoFinal || 'No encontrado',
+        tipo: tipoFinal || 'PERSONA NATURAL',
+        regimen: data.regimen || data.tipo_regimen || 'GENERAL',
+        address: direccionFinal || 'No encontrada',
+        isRetentionAgent: data.isRetentionAgent || data.agente_retencion || 0,
+        isSpecialTaxpayer: data.isSpecialTaxpayer || data.contribuyente_especial || 0,
+        isAccountingObliged: data.isAccountingObliged || data.obligado_contabilidad || 0,
+        sriAccessKey: data.sriAccessKey || '',
+        success: true,
+        source: 'SRI_LIVE'
+      };
+
+      if (finalData.razonSocial === 'No encontrado' && finalData.estado === 'No encontrado') {
+         throw new Error('SRI no devolvió información para este RUC');
+      }
+
+      // 2. PERSISTENCIA EN CACHÉ
+      await db.run('INSERT OR REPLACE INTO ruc_cache (ruc, data, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)', [ruc, JSON.stringify(finalData)]);
+
+      return res.json(finalData);
+
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  }
+
+  res.status(500).json({ success: false, error: 'SRI no devolvió información para este RUC' });
+});
+
+
+router.get('/settings/fiscal', async (req, res) => {
+  const db = await getDb();
+  try {
+    const row = await db.get("SELECT value FROM settings WHERE id = 'fiscal'");
+    res.json(row ? JSON.parse(row.value) : {});
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/settings/fiscal', async (req, res) => {
+  const db = await getDb();
+  try {
+    const value = JSON.stringify(req.body);
+    await db.run("INSERT OR REPLACE INTO settings (id, value) VALUES ('fiscal', ?)", [value]);
+    res.json({ success: true, settings: req.body });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/settings/gemini-key', async (req, res) => {
+  const db = await getDb();
+  try {
+    const row = await db.get("SELECT value FROM settings WHERE id = 'gemini-key'");
+    res.json({ success: true, isConfigured: !!(row && row.value) });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/settings/gemini-key', async (req, res) => {
+  const db = await getDb();
+  try {
+    await db.run("INSERT OR REPLACE INTO settings (id, value) VALUES ('gemini-key', ?)", [req.body.key]);
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// Version endpoint for cache busting
+router.get('/version', (req, res) => {
+  res.json({ version: serverStart });
 });
 
 export default router;

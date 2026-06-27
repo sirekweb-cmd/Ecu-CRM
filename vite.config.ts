@@ -4,7 +4,6 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 import express from 'express';
-import apiRouter from './src/server/api';
 import newApiRouter from './src/server/new_api';
 
 export default defineConfig(() => {
@@ -19,7 +18,6 @@ export default defineConfig(() => {
           app.use(express.json({ limit: '50mb' }));
           app.use(express.urlencoded({ limit: '50mb', extended: true }));
           app.use('/api', newApiRouter);
-          app.use('/api', apiRouter);
           server.middlewares.use(app);
         }
       }
@@ -30,6 +28,7 @@ export default defineConfig(() => {
       },
     },
     server: {
+      allowedHosts: true,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

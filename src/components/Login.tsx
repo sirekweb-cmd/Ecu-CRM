@@ -84,22 +84,8 @@ export default function Login({ onLoginSuccess, onBack }: LoginProps) {
       }
     } catch (error) {
       console.error('Error logging in:', error);
-      // Legacy Fallback local check
-      if (email === 'sirek' && password === 'Erick1212') {
-        const legacyUser: User = {
-          id: 'carlos-andrade',
-          name: 'Carlos Andrade',
-          email: 'sirek',
-          role: 'Super Admin',
-          avatarUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAnJV8Wsm0tliOIswMbx2sPkIv8KpHT4tUQOCdi_fZOyteQQFG3cWkuvW0eSugv0c9WIAc9NKrZHNaG_jDmDZfcFXE5Q9aL0hFPnqES0EDdID3wAfcLCFHb8NLAP5OlmeHUF76VlT9--TVYUJlov2dvW7OYA9rmQaBqhZqqn7-_Q2NXVl92qb8lrhy4QNwHKtOHHjBCDm8A6IaballwwYaAODjJgY9dGk27w_hI5JBnPah3d5Omm05RfIbiYQRXugNnC30pP0gDU8w'
-        };
-        const mockToken = 'mock-jwt-token-carlos-andrade';
-        localStorage.setItem('ecu_crm_user', JSON.stringify(legacyUser));
-        localStorage.setItem('ecu_crm_token', mockToken);
-        onLoginSuccess(legacyUser, mockToken);
-      } else {
-        setErrorMessage('Credenciales inválidas o error de conexión.');
-      }
+      // Legacy Fallback local check (removed for security)
+      setErrorMessage('Credenciales inválidas o error de conexión.');
     } finally {
       setIsLoading(false);
     }
@@ -169,9 +155,15 @@ export default function Login({ onLoginSuccess, onBack }: LoginProps) {
         
         {/* Logo / Header Area */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-3xl font-display shadow-lg shadow-blue-500/20 border border-blue-400/25 mb-4 animate-bounce-slow">
-            S
-          </div>
+          <img 
+            src="/logo.png?v=2" 
+            alt="Logo Empresa" 
+            className="w-24 h-24 object-contain mb-4 drop-shadow-xl"
+            onError={(e) => {
+              // Fallback en caso de que no encuentren la imagen
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
           <h1 className="text-3xl font-extrabold text-white tracking-tight font-display">
             SID<span className="text-blue-500">-</span>CRM
           </h1>
@@ -210,7 +202,7 @@ export default function Login({ onLoginSuccess, onBack }: LoginProps) {
                       type="text"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="sirek o usuario@sidcrm.com.ec"
+                      placeholder="usuario@ejemplo.com"
                       className="w-full bg-slate-950/50 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm outline-none transition-all"
                       required
                     />

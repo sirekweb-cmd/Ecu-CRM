@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import apiRouter from './src/server/api';
 import newApiRouter from './src/server/new_api';
 import 'dotenv/config';
 
@@ -12,7 +11,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve API routes
 app.use('/api', newApiRouter);
-app.use('/api', apiRouter);
 
 // Serve static files from the Vite build directory
 const distPath = path.join(import.meta.dirname, 'dist');

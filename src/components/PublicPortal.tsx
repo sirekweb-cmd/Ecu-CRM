@@ -103,7 +103,7 @@ export default function PublicPortal({ products, onShowLogin, onSubmitQuote }: P
     );
   }
 
-  const deptProducts = products.filter(p => p.department === department && p.isPublic);
+  const publicProducts = products.filter(p => p.isPublic);
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
@@ -121,7 +121,7 @@ export default function PublicPortal({ products, onShowLogin, onSubmitQuote }: P
         <div className="lg:col-span-2">
           <h2 className="text-lg font-semibold text-white mb-4">Catálogo de Productos</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {deptProducts.map(p => (
+            {publicProducts.map(p => (
               <div key={p.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col">
                 <div className="flex-1">
                   <h3 className="text-white font-medium">{p.name}</h3>
@@ -136,7 +136,7 @@ export default function PublicPortal({ products, onShowLogin, onSubmitQuote }: P
                 </div>
               </div>
             ))}
-            {deptProducts.length === 0 && (
+            {publicProducts.length === 0 && (
               <div className="col-span-full py-12 text-center text-slate-500">
                 No hay productos disponibles en este departamento aún.
               </div>

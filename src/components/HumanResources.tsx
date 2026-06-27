@@ -7,7 +7,7 @@ export interface User {
   name: string;
   email: string;
   role: string;
-  department: string;
+  department?: string;
   password?: string;
   baseSalary?: number;
   status?: string;

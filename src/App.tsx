@@ -58,12 +58,14 @@ import {
   ShieldCheck,
   Pencil,
   RefreshCw,
-  ShoppingCart
+  ShoppingCart,
+  BarChart3
 } from 'lucide-react';
 import { useDepartment } from './context/DepartmentContext';
 import { FinancialReports } from './components/FinancialReports';
 import { HumanResources } from './components/HumanResources';
 import { QuotationsHistory } from './components/QuotationsHistory';
+import { GlobalProductStatistics } from './components/GlobalProductStatistics';
 import PurchasesAndExpenses from './components/PurchasesAndExpenses';
 import { AccountingCore } from './utils/AccountingCore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -306,6 +308,7 @@ export const downloadDualZipHelper = async (
   providers: Provider[]
 ) => {
   const zip = new JSZip();
+  const safeClientName = (quoteData.clientName || quoteData.client_name || 'Cliente').replace(/\s+/g, '_');
 
   // PDF 1: Cliente
   const htmlClient = generateQuoteHtmlString(quoteData, logoUrl, fiscalSettings);
@@ -317,7 +320,7 @@ export const downloadDualZipHelper = async (
     html2canvas: { scale: 2 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).output('blob');
-  zip.file(`Cotizacion_Cliente_${quoteData.clientName.replace(/\s+/g, '_')}.pdf`, pdfClientBlob);
+  zip.file(`Cotizacion_Cliente_${safeClientName}.pdf`, pdfClientBlob);
 
   // PDF 2: Interno
   const htmlInternal = generateInternalQuoteHtmlString(quoteData, logoUrl, fiscalSettings, rawProducts, providers);
@@ -329,14 +332,14 @@ export const downloadDualZipHelper = async (
     html2canvas: { scale: 2 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).output('blob');
-  zip.file(`Abastecimiento_Interno_${quoteData.clientName.replace(/\s+/g, '_')}.pdf`, pdfInternalBlob);
+  zip.file(`Abastecimiento_Interno_${safeClientName}.pdf`, pdfInternalBlob);
 
   // Download ZIP
   const content = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(content);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Cotizacion_${quoteData.clientName.replace(/\s+/g, '_')}.zip`;
+  a.download = `Cotizacion_${safeClientName}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -400,11 +403,11 @@ export default function App() {
 
   // Navigation State
   const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [activeTab, setRawActiveTab] = useState<'dashboard' | 'clientes' | 'nuevo-cliente' | 'facturacion' | 'ajustes' | 'cotizador' | 'historial-cotizaciones' | 'usuarios' | 'productos' | 'perfil' | 'proyectos' | 'fiscal' | 'reportes' | 'rrhh_empleados' | 'rrhh_accesos' | 'rrhh_nomina' | 'compras_gastos'>('dashboard');
+  const [activeTab, setRawActiveTab] = useState<'dashboard' | 'clientes' | 'nuevo-cliente' | 'facturacion' | 'ajustes' | 'cotizador' | 'historial-cotizaciones' | 'usuarios' | 'productos' | 'perfil' | 'proyectos' | 'fiscal' | 'reportes' | 'rrhh_empleados' | 'rrhh_accesos' | 'rrhh_nomina' | 'compras_gastos' | 'estadisticas'>('dashboard');
   const [globalTaxes, setGlobalTaxes] = useState({ iva: 15, retencionFuente: 1.75, retencionIva: 30 });
   const { activeDepartment, setDepartmentContext, clearDepartmentContext } = useDepartment();
   
-  const setActiveTab = (tab: 'dashboard' | 'clientes' | 'nuevo-cliente' | 'facturacion' | 'ajustes' | 'cotizador' | 'historial-cotizaciones' | 'usuarios' | 'productos' | 'perfil' | 'proyectos' | 'fiscal' | 'reportes' | 'rrhh_empleados' | 'rrhh_accesos' | 'rrhh_nomina' | 'compras_gastos') => {
+  const setActiveTab = (tab: 'dashboard' | 'clientes' | 'nuevo-cliente' | 'facturacion' | 'ajustes' | 'cotizador' | 'historial-cotizaciones' | 'usuarios' | 'productos' | 'perfil' | 'proyectos' | 'fiscal' | 'reportes' | 'rrhh_empleados' | 'rrhh_accesos' | 'rrhh_nomina' | 'compras_gastos' | 'estadisticas') => {
     setRawActiveTab(tab);
     playClickSound();
   };
@@ -448,7 +451,7 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
-      const depLogo = localStorage.getItem(`sid_crm_logo_${currentUser.department}`);
+      const depLogo = localStorage.getItem('sid_crm_logo_global');
       setLogoUrl(depLogo);
       if (depLogo) {
         let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
@@ -2327,7 +2330,7 @@ export default function App() {
       detail: `por un valor total de $${total.toFixed(2)}`,
       time: 'Hace un momento',
       author: currentUser?.name || 'Carlos Andrade',
-      type: 'proposal',
+      type: 'proposal' as const,
       statusLabel: 'COTIZACIÓN',
       statusType: 'blue'
     };
@@ -2339,6 +2342,84 @@ export default function App() {
     }).then(() => fetchActivities()).catch(() => {
       setActivities(prev => [newAct, ...prev]);
     });
+  };
+
+  const handleGenerateInvoice = async () => {
+    if (!quoteClientId) {
+      alert("Por favor seleccione un cliente para la factura.");
+      return;
+    }
+    if (quoteItems.some(i => !i.description.trim() || i.unitPrice <= 0)) {
+      alert("Por favor complete correctamente los ítems de la factura.");
+      return;
+    }
+
+    const client = clients.find(c => c.id === quoteClientId);
+    const subtotal = quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+    const iva = subtotal * 0.15;
+    const valRetFuente = subtotal * (quoteRetFuente / 100);
+    const valRetIva = iva * (quoteRetIva / 100);
+    const costoTotal = quoteItems.reduce((acc, item) => {
+      const prod = products.find(p => p.name === item.description);
+      return acc + (prod ? prod.costPrice : 0) * item.quantity;
+    }, 0);
+
+    try {
+      const asientos = AccountingCore.registrarVenta(
+        subtotal, 
+        costoTotal, 
+        iva, 
+        valRetFuente, 
+        valRetIva, 
+        "Factura generada desde Módulo Facturador",
+        currentUser.id
+      );
+      
+      await fetch('/api/data/asientos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(asientos)
+      });
+
+      const invoiceData = {
+        invoiceNumber: `REQ-${Date.now()}`,
+        clientId: client?.id,
+        clientName: client?.company || client?.name || 'Consumidor Final',
+        clientRuc: client?.ruc || '9999999999999',
+        issueDate: quoteDate,
+        dueDate: quoteDate,
+        subtotal: subtotal,
+        discount: 0,
+        taxRate: 15,
+        taxAmount: iva,
+        retenciones: valRetFuente + valRetIva,
+        total: subtotal + iva - valRetFuente - valRetIva,
+        status: 'draft',
+        type: 'invoice',
+        department: activeDepartment || 'General',
+        userId: currentUser.id,
+        items: quoteItems
+      };
+
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoiceData)
+      });
+
+      if (!res.ok) {
+        throw new Error("Error al guardar la factura en la base de datos.");
+      }
+
+      alert("¡Factura y Asientos Contables generados con éxito!\n\nLa factura se ha guardado en el Facturador y en la bandeja del SRI.");
+      
+      fetchInvoices();
+      
+      setQuoteItems([{ description: '', quantity: 1, unitPrice: 0 }]);
+      setQuoteClientId('');
+    } catch (e: any) {
+      alert("Error al generar factura: " + e.message);
+    }
   };
 
   // Print and Export Invoice to PDF
@@ -2617,6 +2698,33 @@ export default function App() {
             <span>{activeDepartment ? `Dashboard: ${activeDepartment}` : 'Departamentos'}</span>
           </button>
 
+          {/* Todos (incluyendo Bodeguero) ven Productos */}
+          <button
+            onClick={() => setActiveTab('productos')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+              activeTab === 'productos'
+                ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            <Package className="w-5 h-5" />
+            <span>Productos / Catálogo</span>
+          </button>
+
+          {['Administrador', 'Super Admin'].includes(currentUser.role) && (
+            <button
+              onClick={() => setActiveTab('estadisticas')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'estadisticas'
+                  ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span>Estadísticas Globales</span>
+            </button>
+          )}
+
           {activeDepartment && (
             <>
               {/* Vendedores y Admins ven Clientes y Cotizador */}
@@ -2674,18 +2782,6 @@ export default function App() {
                 </>
               )}
 
-              {/* Todos (incluyendo Bodeguero) ven Productos */}
-              <button
-                onClick={() => setActiveTab('productos')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                  activeTab === 'productos'
-                    ? 'text-blue-700 bg-blue-50 border-r-4 border-blue-600 translate-x-0.5'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Package className="w-5 h-5" />
-                <span>Productos / Catálogo</span>
-              </button>
 
               {/* Sólo Admins ven Proyectos, Reportes Financieros y Recursos Humanos */}
               {['Administrador', 'Super Admin', 'Contador'].includes(currentUser.role) && (
@@ -4455,220 +4551,9 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* Configuración Fiscal (RUC, Empresa, Dirección) */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:col-span-2">
-                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2 mb-4">
-                    <Building2 className="w-5 h-5 text-blue-500" />
-                    Datos de la Empresa / Emisor
-                  </h3>
-                  <form onSubmit={handleSaveFiscalSettings} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    {/* RUC con BOT SRI */}
-                    <div className="flex flex-col gap-1.5 font-sans">
-                      <label className="text-xs font-bold text-slate-700">RUC</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={fiscalFormRuc}
-                          onChange={(e) => setFiscalFormRuc(e.target.value)}
-                          placeholder="Ej. 0912345678001"
-                          className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 pr-24 text-xs outline-none font-mono"
-                        />
-                        <button
-                          type="button"
-                          disabled={!fiscalFormRuc || isConsultingSri}
-                          onClick={async () => {
-                            if (!fiscalFormRuc) return;
-                            setIsConsultingSri(true);
-                            try {
-                              const res = await fetch(`/api/consulta-sri?ruc=${fiscalFormRuc}`);
-                              const data = await res.json();
-                              if (data.success) {
-                                setFiscalFormNombre(data.razonSocial || '');
-                                if (data.address && data.address !== 'No encontrada') {
-                                  setFiscalFormDireccion(data.address);
-                                }
-                                playSuccessSound();
-                              } else {
-                                window.alert(data.error || 'Error al consultar SRI');
-                              }
-                            } catch (e) {
-                              window.alert('Error de conexión al consultar SRI');
-                            } finally {
-                              setIsConsultingSri(false);
-                            }
-                          }}
-                          className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-indigo-600 text-white rounded-md font-bold text-xs uppercase hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center cursor-pointer"
-                        >
-                          {isConsultingSri ? '...' : 'Bot SRI'}
-                        </button>
-                      </div>
-                    </div>
+                
 
-                    {/* Razón Social */}
-                    <div className="flex flex-col gap-1.5 font-sans">
-                      <label className="text-xs font-bold text-slate-700">Razón Social / Nombre Comercial</label>
-                      <input
-                        type="text"
-                        value={fiscalFormNombre}
-                        onChange={(e) => setFiscalFormNombre(e.target.value)}
-                        placeholder="Ej. S.I.D-CRM Soluciones"
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
-                      />
-                    </div>
-
-                    {/* Slogan */}
-                    <div className="flex flex-col gap-1.5 font-sans">
-                      <label className="text-xs font-bold text-slate-700">Slogan o Descripción</label>
-                      <input
-                        type="text"
-                        value={fiscalFormSlogan}
-                        onChange={(e) => setFiscalFormSlogan(e.target.value)}
-                        placeholder="Ej. Soporte Técnico SRI y Soluciones Empresariales"
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
-                      />
-                    </div>
-
-                    {/* Dirección */}
-                    <div className="flex flex-col gap-1.5 font-sans">
-                      <label className="text-xs font-bold text-slate-700">Dirección Matriz</label>
-                      <input
-                        type="text"
-                        value={fiscalFormDireccion}
-                        onChange={(e) => setFiscalFormDireccion(e.target.value)}
-                        placeholder="Ej. Av. Principal y Secundaria"
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
-                      />
-                    </div>
-
-                    {/* Teléfono */}
-                    <div className="flex flex-col gap-1.5 font-sans">
-                      <label className="text-xs font-bold text-slate-700">Teléfono</label>
-                      <input
-                        type="text"
-                        value={fiscalFormTelefono}
-                        onChange={(e) => setFiscalFormTelefono(e.target.value)}
-                        placeholder="Ej. 0987654321"
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
-                      />
-                    </div>
-
-                    {/* Firma Electrónica */}
-                    <div className="flex flex-col gap-1.5 font-sans md:col-span-2">
-                      <label className="text-xs font-bold text-slate-700">Firma Electrónica (Imagen)</label>
-                      <div className="flex items-center gap-4 py-2 border border-slate-200 rounded-lg p-3 bg-slate-50">
-                        <div className="w-24 h-12 bg-white border border-slate-200 rounded-md flex items-center justify-center overflow-hidden shrink-0 relative group">
-                          {fiscalFormFirma ? (
-                            <>
-                              <img src={fiscalFormFirma} alt="Firma" className="max-w-full max-h-full object-contain p-1" />
-                              <button
-                                type="button"
-                                onClick={() => setFiscalFormFirma('')}
-                                className="absolute inset-0 bg-red-600/90 text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                              >
-                                Quitar
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 font-medium">Sin Firma</span>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const reader = new FileReader();
-                                reader.onload = () => setFiscalFormFirma(reader.result as string);
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                          />
-                          <p className="text-[10px] text-slate-400 mt-1">Se usará en la parte inferior de los PDFs de proformas/facturas.</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="md:col-span-2 flex justify-end mt-2">
-                      <button
-                        type="submit"
-                        className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-all shadow-xs cursor-pointer"
-                      >
-                        Guardar Configuración
-                      </button>
-                    </div>
-                  </form>
-                </div>
-
-                {/* Personalización e Imagen Corporativa */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between md:col-span-2">
-                  <div className="space-y-4">
-                    <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-blue-500" />
-                      Logo del Departamento ({currentUser.department})
-                    </h3>
-                    <div className="flex items-center gap-4 py-2">
-                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-350 flex items-center justify-center bg-slate-50 overflow-hidden relative group shrink-0">
-                        {logoUrl ? (
-                          <>
-                            <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
-                            <button 
-                              type="button"
-                              onClick={() => {
-                                localStorage.removeItem(`sid_crm_logo_${currentUser.department}`);
-                                setLogoUrl(null);
-                                let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-                                if (link) link.href = '/vite.svg'; // Reset
-                                window.alert("Logo eliminado del departamento");
-                              }}
-                              className="absolute inset-0 bg-red-600/90 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                            >
-                              Eliminar
-                            </button>
-                          </>
-                        ) : (
-                          <Upload className="w-6 h-6 text-slate-400" />
-                        )}
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <label className="block">
-                          <span className="sr-only">Seleccionar logo</span>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const reader = new FileReader();
-                                reader.onload = () => {
-                                  const base64 = reader.result as string;
-                                  localStorage.setItem(`sid_crm_logo_${currentUser.department}`, base64);
-                                  setLogoUrl(base64);
-                                  
-                                  let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-                                  if (!link) {
-                                    link = document.createElement('link');
-                                    link.rel = 'icon';
-                                    document.head.appendChild(link);
-                                  }
-                                  link.href = base64;
-                                  
-                                  window.alert(`Logo configurado para el departamento de ${currentUser.department}`);
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                          />
-                        </label>
-                        <p className="text-[10px] text-slate-400">PNG o JPG recomendado (máx. 2MB). El logo será visible únicamente para el departamento de {currentUser.department}.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                
 
                 {/* Ajustes Generales del Sistema */}
                 <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:col-span-2">
@@ -5146,48 +5031,23 @@ export default function App() {
                         return;
                       }
                       if (quoteItems.some(i => !i.description.trim() || i.unitPrice <= 0)) {
-                        alert("Por favor complete correctamente los ítems de la cotización.");
+                        alert("Por favor complete correctamente los ítems.");
                         return;
                       }
-
-                      const subtotal = quoteItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
-                      const iva = subtotal * 0.15;
-                      const valRetFuente = subtotal * (quoteRetFuente / 100);
-                      const valRetIva = iva * (quoteRetIva / 100);
-                      const costoTotal = quoteItems.reduce((acc, item) => {
-                        const prod = products.find(p => p.name === item.description);
-                        return acc + (prod ? prod.cost : 0) * item.quantity;
-                      }, 0);
-                      
-                      try {
-                        const asientos = AccountingCore.registrarVenta(
-                          subtotal, 
-                          costoTotal, 
-                          iva, 
-                          valRetFuente, 
-                          valRetIva, 
-                          "Factura generada desde Módulo Facturador",
-                          currentUser.id
-                        );
-                        console.log("Asientos generados automáticamente: ", asientos);
-                        
-                        // Save to API
-                        fetch('/api/data/asientos', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(asientos)
-                        }).catch(console.error);
-
-                        alert("¡Partida Doble Ejecutada con Éxito!\n\nAsiento Venta:\n- DEBE: Bancos/Caja, Retenciones por Cobrar\n- HABER: Ingresos e IVA en Ventas\n\nAsiento Costo:\n- DEBE: Costo de Ventas\n- HABER: Inventarios");
-                        handlePrintQuote();
-                      } catch (e: any) {
-                        alert("Error en el Core Contable: " + e.message);
-                      }
+                      handlePrintQuote();
                     }}
+                    className="px-5 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Generar Cotización
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateInvoice}
                     className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    Procesar Factura y Asiento
+                    <Receipt className="w-3.5 h-3.5" />
+                    Generar Factura y Asiento
                   </button>
                 </div>
 
@@ -5359,6 +5219,19 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: ESTADÍSTICAS GLOBALES */}
+          {activeTab === 'estadisticas' && ['Administrador', 'Super Admin'].includes(currentUser?.role || '') && (
+            <div className="space-y-8 animate-slide-up font-sans">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="font-display text-3xl font-semibold text-slate-900">Estadísticas de Productos</h2>
+                  <p className="text-slate-500 mt-1">Análisis de ventas y cotizaciones a nivel global.</p>
+                </div>
+              </div>
+              <GlobalProductStatistics products={rawProducts} invoices={rawInvoices} />
+            </div>
+          )}
+
           {/* VIEW 11: PROYECTOS */}
           {activeTab === 'proyectos' && (
             <div className="space-y-8 animate-slide-up font-sans">
@@ -5463,6 +5336,226 @@ export default function App() {
                   <ShieldCheck className="w-4 h-4" /> ACCESO: CEO / CONTABILIDAD / AUTORIZADOS
                 </div>
               </div>
+
+              
+              {/* === MOVIDO DESDE AJUSTES === */}
+              {/* Configuración Fiscal (RUC, Empresa, Dirección) */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:col-span-2">
+                  <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2 mb-4">
+                    <Building2 className="w-5 h-5 text-blue-500" />
+                    Datos de la Empresa / Emisor
+                  </h3>
+                  <form onSubmit={handleSaveFiscalSettings} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* RUC con BOT SRI */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">RUC</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={fiscalFormRuc}
+                          onChange={(e) => setFiscalFormRuc(e.target.value)}
+                          placeholder="Ej. 0912345678001"
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 pr-24 text-xs outline-none font-mono"
+                        />
+                        <button
+                          type="button"
+                          disabled={!fiscalFormRuc || isConsultingSri}
+                          onClick={async () => {
+                            if (!fiscalFormRuc) return;
+                            setIsConsultingSri(true);
+                            try {
+                              const res = await fetch(`/api/consulta-sri?ruc=${fiscalFormRuc}`);
+                              const data = await res.json();
+                              if (data.success) {
+                                setFiscalFormNombre(data.razonSocial || '');
+                                if (data.address && data.address !== 'No encontrada') {
+                                  setFiscalFormDireccion(data.address);
+                                }
+                                playSuccessSound();
+                              } else {
+                                window.alert(data.error || 'Error al consultar SRI');
+                              }
+                            } catch (e) {
+                              window.alert('Error de conexión al consultar SRI');
+                            } finally {
+                              setIsConsultingSri(false);
+                            }
+                          }}
+                          className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-indigo-600 text-white rounded-md font-bold text-xs uppercase hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center cursor-pointer"
+                        >
+                          {isConsultingSri ? '...' : 'Bot SRI'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Razón Social */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Razón Social / Nombre Comercial</label>
+                      <input
+                        type="text"
+                        value={fiscalFormNombre}
+                        onChange={(e) => setFiscalFormNombre(e.target.value)}
+                        placeholder="Ej. S.I.D-CRM Soluciones"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Slogan */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Slogan o Descripción</label>
+                      <input
+                        type="text"
+                        value={fiscalFormSlogan}
+                        onChange={(e) => setFiscalFormSlogan(e.target.value)}
+                        placeholder="Ej. Soporte Técnico SRI y Soluciones Empresariales"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Dirección */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Dirección Matriz</label>
+                      <input
+                        type="text"
+                        value={fiscalFormDireccion}
+                        onChange={(e) => setFiscalFormDireccion(e.target.value)}
+                        placeholder="Ej. Av. Principal y Secundaria"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Teléfono */}
+                    <div className="flex flex-col gap-1.5 font-sans">
+                      <label className="text-xs font-bold text-slate-700">Teléfono</label>
+                      <input
+                        type="text"
+                        value={fiscalFormTelefono}
+                        onChange={(e) => setFiscalFormTelefono(e.target.value)}
+                        placeholder="Ej. 0987654321"
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white text-slate-800 rounded-lg px-3 py-2 text-xs outline-none font-sans"
+                      />
+                    </div>
+
+                    {/* Firma Electrónica */}
+                    <div className="flex flex-col gap-1.5 font-sans md:col-span-2">
+                      <label className="text-xs font-bold text-slate-700">Firma Electrónica (Imagen)</label>
+                      <div className="flex items-center gap-4 py-2 border border-slate-200 rounded-lg p-3 bg-slate-50">
+                        <div className="w-24 h-12 bg-white border border-slate-200 rounded-md flex items-center justify-center overflow-hidden shrink-0 relative group">
+                          {fiscalFormFirma ? (
+                            <>
+                              <img src={fiscalFormFirma} alt="Firma" className="max-w-full max-h-full object-contain p-1" />
+                              <button
+                                type="button"
+                                onClick={() => setFiscalFormFirma('')}
+                                className="absolute inset-0 bg-red-600/90 text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              >
+                                Quitar
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-medium">Sin Firma</span>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => setFiscalFormFirma(reader.result as string);
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">Se usará en la parte inferior de los PDFs de proformas/facturas.</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="md:col-span-2 flex justify-end mt-2">
+                      <button
+                        type="submit"
+                        className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-all shadow-xs cursor-pointer"
+                      >
+                        Guardar Configuración
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              
+              {/* === MOVIDO DESDE AJUSTES: LOGO DEPARTAMENTO === */}
+              {/* Personalización e Imagen Corporativa */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between md:col-span-2">
+                  <div className="space-y-4">
+                    <h3 className="font-display font-semibold text-slate-900 text-base flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-blue-500" />
+                      Logo de la Empresa (Global)
+                    </h3>
+                    <div className="flex items-center gap-4 py-2">
+                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-350 flex items-center justify-center bg-slate-50 overflow-hidden relative group shrink-0">
+                        {logoUrl ? (
+                          <>
+                            <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                localStorage.removeItem('sid_crm_logo_global');
+                                setLogoUrl(null);
+                                let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+                                if (link) link.href = '/vite.svg'; // Reset
+                                window.alert("Logo global eliminado");
+                              }}
+                              className="absolute inset-0 bg-red-600/90 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            >
+                              Eliminar
+                            </button>
+                          </>
+                        ) : (
+                          <Upload className="w-6 h-6 text-slate-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <label className="block">
+                          <span className="sr-only">Seleccionar logo</span>
+                          <input 
+                            type="file" 
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  const base64 = reader.result as string;
+                                  localStorage.setItem('sid_crm_logo_global', base64);
+                                  setLogoUrl(base64);
+                                  
+                                  let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+                                  if (!link) {
+                                    link = document.createElement('link');
+                                    link.rel = 'icon';
+                                    document.head.appendChild(link);
+                                  }
+                                  link.href = base64;
+                                  
+                                  window.alert(`Logo global configurado correctamente`);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                          />
+                        </label>
+                        <p className="text-[10px] text-slate-400">PNG o JPG recomendado (máx. 2MB). El logo será visible globalmente para todos los departamentos.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/* ============================ */}
+{/* ============================ */}
 
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
                 {/* Left Column (Info) */}

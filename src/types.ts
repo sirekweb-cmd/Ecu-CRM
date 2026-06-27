@@ -1,17 +1,27 @@
 export type ClientStatus = 'nuevo lead' | 'en desarrollo' | 'cobrado' | 'finalizado';
-export type ProjectStatus = 'En Planificación' | 'En Progreso' | 'Completado';
+
+export type ProjectStatus = 'En Planificación' | 'En Progreso' | 'Completado' | 'planning' | 'ongoing' | 'testing' | 'completed';
+
+export interface ProjectTask {
+  id: string;
+  title: string;
+  completed: boolean;
+}
 
 export interface Project {
   id: string;
   name: string;
   clientId: string;
-  department: string; // Herramientas | Materiales | Eléctrico
+  clientName?: string;
+  department?: string; // Herramientas | Materiales | Eléctrico
   status: ProjectStatus;
   startDate: string;
   endDate?: string;
   budget: number;
   progress: number;
   description: string;
+  tasks?: ProjectTask[];
+  assignedTo?: string;
 }
 
 export interface TimelineEvent {
